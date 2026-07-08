@@ -1,0 +1,1118 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>꼬물이.io — 스네이크 아레나</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  :root{
+    --bg:#0A0C13; --panel:rgba(14,17,29,.9); --line:rgba(255,255,255,.09);
+    --txt:#E9ECF5; --sub:#98A1BC; --accent:#57D964; --gold:#FFD54D;
+  }
+  html,body{height:100%;}
+  body{
+    margin:0; overflow:hidden; background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,"Malgun Gothic","Segoe UI",Roboto,sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
+  }
+  #game{position:fixed; inset:0; display:block; touch-action:none;}
+
+  .overlay{position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:16px;}
+  #startScreen{background:radial-gradient(ellipse at 50% 40%, rgba(8,10,18,.42), rgba(4,5,9,.84));}
+  #gameOver{background:rgba(4,5,9,.6); backdrop-filter:blur(3px);}
+  .hidden{display:none !important;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:20px;
+    padding:30px 36px 24px; width:min(400px, 100%); box-sizing:border-box; text-align:center;
+    box-shadow:0 30px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4);
+    backdrop-filter:blur(14px);
+  }
+  .logo{
+    margin:0; font-size:46px; font-weight:800; letter-spacing:1px; line-height:1.1;
+    background:linear-gradient(92deg,#6CFF74 5%,#39D5FF 38%,#B08CFF 70%,#FF6FA5 98%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 2px 16px rgba(80,220,140,.28));
+  }
+  .tagline{margin:6px 0 20px; color:var(--sub); font-size:13px; letter-spacing:.4px;}
+
+  #nameInput{
+    width:100%; box-sizing:border-box; padding:12px 14px; font-size:15px; text-align:center;
+    color:var(--txt); background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.14);
+    border-radius:11px; outline:none; font-family:inherit;
+  }
+  #nameInput:focus{border-color:rgba(108,255,116,.55); box-shadow:0 0 0 3px rgba(87,217,100,.15);}
+  #nameInput::placeholder{color:#5E6883;}
+
+  .skinRow{display:flex; align-items:center; gap:6px; margin:16px 0 2px;}
+  #skinPreview{flex:1; min-width:0; height:88px; border-radius:12px; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.06);}
+  .arrow{
+    flex:none; width:38px; height:88px; border-radius:11px; border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.05); color:var(--txt); font-size:15px; cursor:pointer;
+  }
+  .arrow:hover{background:rgba(255,255,255,.11);}
+  .skinName{font-size:12.5px; color:var(--sub); margin-bottom:14px; letter-spacing:2px;}
+
+  button{font-family:inherit;}
+  button:focus-visible, #nameInput:focus-visible{outline:2px solid #7DFF8A; outline-offset:2px;}
+  #playBtn, #againBtn{
+    width:100%; padding:14px; margin-top:2px; border:none; border-radius:13px; cursor:pointer;
+    font-size:17px; font-weight:800; letter-spacing:1px; color:#06230C;
+    background:linear-gradient(180deg,#63E070,#2FAE4A);
+    box-shadow:0 6px 22px rgba(63,205,90,.28), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+  #playBtn:hover, #againBtn:hover{filter:brightness(1.08);}
+  #playBtn:active, #againBtn:active{transform:translateY(1px);}
+  .ghost{
+    width:100%; padding:11px; margin-top:9px; border-radius:12px; cursor:pointer;
+    background:transparent; border:1px solid rgba(255,255,255,.16); color:var(--sub); font-size:14px;
+  }
+  .ghost:hover{color:var(--txt); border-color:rgba(255,255,255,.3);}
+
+  .help{font-size:12px; color:var(--sub); line-height:2; margin:16px 0 4px;}
+  kbd{
+    padding:1px 7px; border-radius:5px; font-size:11px; font-family:inherit; color:var(--txt);
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.22); border-bottom-width:2px;
+  }
+  .fine{font-size:11px; color:#5E6883; margin:8px 0 0; line-height:1.7;}
+  #bestLine{color:var(--gold); font-size:12px; margin-top:12px;}
+
+  #hud{
+    position:fixed; left:18px; bottom:14px; z-index:10; pointer-events:none;
+    text-shadow:0 1px 4px rgba(0,0,0,.9); font-size:13.5px; color:#C6CDE2;
+  }
+  #hud b{font-size:20px; color:#fff; font-variant-numeric:tabular-nums;}
+  #hud .sub{font-size:12px; color:var(--sub); margin-top:2px;}
+  #hud .sub b{font-size:12px; color:#DDE3F5;}
+
+  #leaderboard{
+    position:fixed; top:14px; right:16px; z-index:10; pointer-events:none;
+    min-width:188px; padding:10px 14px 8px; border-radius:13px;
+    background:rgba(7,9,15,.5); border:1px solid rgba(255,255,255,.07);
+    font-size:12.5px; line-height:1.75; font-variant-numeric:tabular-nums;
+  }
+  #leaderboard .lb-title{font-size:11px; letter-spacing:3px; color:var(--sub); text-align:center; margin-bottom:4px;}
+  .lb-row{display:flex; justify-content:space-between; gap:14px; color:#B9C1D8;}
+  .lb-row span{color:#8B93AC;}
+  .lb-row.top1{color:var(--gold);} .lb-row.top1 span{color:var(--gold);}
+  .lb-row.me{color:#7DFF8A; font-weight:700;} .lb-row.me span{color:#7DFF8A;}
+  .lb-gap{border-top:1px dashed rgba(255,255,255,.14); margin:4px 0;}
+
+  #minimap{position:fixed; right:16px; bottom:14px; z-index:10; pointer-events:none;}
+
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:9px; margin:18px 0;}
+  .stat{background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 6px 8px;}
+  .stat span{display:block; font-size:11px; color:var(--sub); letter-spacing:1px; margin-bottom:3px;}
+  .stat b{font-size:21px; font-variant-numeric:tabular-nums;}
+  #goTitle{margin:2px 0 0; font-size:24px;}
+  #goKilledBy{color:var(--sub); font-size:12.5px; margin:6px 0 0;}
+
+  @media (max-width:520px){
+    .panel{padding:22px 18px 18px;}
+    .logo{font-size:36px;}
+    .help{font-size:11px;}
+    #leaderboard{transform:scale(.82); transform-origin:top right; min-width:170px;}
+    #hud{left:12px; bottom:10px;}
+    #minimap{transform:scale(.78); transform-origin:bottom right;}
+  }
+</style>
+
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div>내 길이 <b id="hudLen">10</b></div>
+  <div class="sub">킬 <b id="hudKills">0</b> · 순위 <b id="hudRank">-</b></div>
+</div>
+<div id="leaderboard" class="hidden"></div>
+<canvas id="minimap" class="hidden"></canvas>
+
+<div id="startScreen" class="overlay">
+  <div class="panel">
+    <h1 class="logo">꼬물이.io</h1>
+    <p class="tagline">글로잉 오브를 먹고 · 자라고 · 살아남기</p>
+    <input id="nameInput" maxlength="12" placeholder="닉네임을 입력하세요" autocomplete="off" spellcheck="false">
+    <div class="skinRow">
+      <button id="skinPrev" class="arrow" aria-label="이전 스킨">◀</button>
+      <canvas id="skinPreview"></canvas>
+      <button id="skinNext" class="arrow" aria-label="다음 스킨">▶</button>
+    </div>
+    <div class="skinName" id="skinName">바이올렛</div>
+    <button id="playBtn">게임 시작</button>
+    <p class="help">
+      🖱️ 마우스로 방향 조종 · <kbd>클릭</kbd> / <kbd>Space</kbd> / <kbd>↑</kbd> 꾹 = 부스터 <span style="color:#5E6883">(길이 소모)</span><br>
+      📱 터치: 드래그로 조종 · 두 번째 손가락 = 부스터
+    </p>
+    <p id="bestLine" class="hidden">🏆 최고 기록 0</p>
+    <p class="fine">머리가 다른 뱀의 몸에 닿으면 죽습니다. 죽은 뱀은 빛나는 먹이가 됩니다.<br>slither.io 게임플레이 오마주 · 그래픽/코드 100% 자체 제작 · AI 뱀 26마리와 대전</p>
+  </div>
+</div>
+
+<div id="gameOver" class="overlay hidden">
+  <div class="panel">
+    <h2 id="goTitle">💀 잡아먹혔다!</h2>
+    <p id="goKilledBy"></p>
+    <div class="stats">
+      <div class="stat"><span>최종 길이</span><b id="goLen">0</b></div>
+      <div class="stat"><span>킬</span><b id="goKills">0</b></div>
+      <div class="stat"><span>생존 시간</span><b id="goTime">0:00</b></div>
+      <div class="stat"><span>최고 기록</span><b id="goBest" style="color:var(--gold)">0</b></div>
+    </div>
+    <button id="againBtn">다시 하기</button>
+    <button id="menuBtn" class="ghost">처음으로</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   꼬물이.io — slither.io 스타일 스네이크 아레나
+   모든 에셋(스킨/먹이/배경/글로우)은 캔버스로 프로시저럴 생성.
+   ============================================================ */
+
+// ---------- 상수 ----------
+const TAU = Math.PI * 2;
+const WORLD_R = 3600;          // 원형 맵 반지름
+const PT_SPACE = 5;            // 몸통 경로 점 간격 (월드 단위)
+const BASE_SPEED = 165;
+const BOOST_SPEED = 315;
+const FOOD_TARGET = 2400;
+const BOT_TARGET = 26;
+const CELL = 160;              // 먹이 공간 해시 셀 크기
+
+// ---------- 유틸 ----------
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+function angNorm(a){ a %= TAU; if (a > Math.PI) a -= TAU; else if (a < -Math.PI) a += TAU; return a; }
+const angLerp = (a, b, f) => a + angNorm(b - a) * f;
+function hexToRgb(h){
+  h = h.replace('#', '');
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const n = parseInt(h, 16);
+  return [n >> 16 & 255, n >> 8 & 255, n & 255];
+}
+const hexA = (col, a) => { const [r, g, b] = hexToRgb(col); return `rgba(${r},${g},${b},${a})`; };
+function shadeHex(col, f){ // f>0 밝게, f<0 어둡게
+  const [r, g, b] = hexToRgb(col);
+  const t = f < 0 ? 0 : 255, p = Math.abs(f);
+  return `rgb(${Math.round(r+(t-r)*p)},${Math.round(g+(t-g)*p)},${Math.round(b+(t-b)*p)})`;
+}
+const escapeHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+// ---------- 스킨 / 색 ----------
+const SKINS = [
+  { name: '바이올렛', cols: ['#8B5CF6', '#5B21B6', '#A78BFA'] },
+  { name: '블레이즈', cols: ['#FF6B35', '#FFD23F', '#E82E2E'] },
+  { name: '오션',     cols: ['#38BDF8', '#1D4ED8', '#7DD3FC'] },
+  { name: '바이퍼',   cols: ['#4ADE80', '#166534', '#A3E635'] },
+  { name: '캔디',     cols: ['#FB7185', '#FFE4F1', '#EC4899'] },
+  { name: '레인보우', cols: ['#FF5C5C'], rainbow: true },
+  { name: '골드',     cols: ['#FBBF24', '#92400E', '#FDE68A'] },
+  { name: '팬텀',     cols: ['#E5E7EB', '#4B5563', '#9CA3AF'] },
+];
+const FOOD_COLS = ['#FF4F9A','#FFD93D','#6BFF8E','#4FC3FF','#C58BFF','#FF8A3D','#66FFF2','#FF5C5C','#B7FF4F'];
+const BOT_NAMES = ['꿈틀대마왕','국수도둑','뱀파이어','용가리','스네이쿠','미끄덩','파스타왕','츄러스','전봇대','지렁S',
+  '람보르뱀','꼬불이','싱싱면발','우동사리','아나콘다','살모사','Slitherin','NoodleKing','ZigZag','Kobra',
+  'wormhole','sss…','뱀뱀이','호롤롤로','기다란놈','미스터롱','슬금슬금','스르륵','철사줄','댕댕뱀','비암','꽈배기'];
+
+// ---------- 캔버스 / 화면 ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0, vig = null;
+
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  // 비네트 캐시
+  vig = document.createElement('canvas');
+  vig.width = canvas.width; vig.height = canvas.height;
+  const g = vig.getContext('2d');
+  const cx = vig.width / 2, cy = vig.height / 2;
+  const gr = g.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.6, cx, cy, Math.hypot(cx, cy));
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(1, 'rgba(0,0,0,0.42)');
+  g.fillStyle = gr; g.fillRect(0, 0, vig.width, vig.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- 스프라이트 팩토리 (프로시저럴 에셋) ----------
+const SEG_R = 30; // 스프라이트 내 원 반지름 (64px 캔버스 기준)
+
+function makeSegSprite(main, light, dark){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(24, 21, 3, 32, 32, 31);
+  gr.addColorStop(0, light); gr.addColorStop(0.55, main); gr.addColorStop(1, dark);
+  g.fillStyle = gr;
+  g.beginPath(); g.arc(32, 32, SEG_R, 0, TAU); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.28)'; g.lineWidth = 2;
+  g.beginPath(); g.arc(32, 32, SEG_R - 1, 0, TAU); g.stroke();
+  return c;
+}
+const skinSpriteCache = new Map();
+function skinSprites(skin){
+  let a = skinSpriteCache.get(skin.name);
+  if (!a){
+    a = skin.cols.map(c => makeSegSprite(c, shadeHex(c, 0.42), shadeHex(c, -0.34)));
+    skinSpriteCache.set(skin.name, a);
+  }
+  return a;
+}
+const rainbowCache = new Map();
+function rainbowSprite(hue){
+  let s = rainbowCache.get(hue);
+  if (!s){
+    s = makeSegSprite(`hsl(${hue},82%,58%)`, `hsl(${hue},85%,75%)`, `hsl(${hue},80%,37%)`);
+    rainbowCache.set(hue, s);
+  }
+  return s;
+}
+function spriteForDist(s, d){ // d = 머리로부터의 거리 → 밴드 패턴이 머리에 고정
+  if (s.skin.rainbow){
+    const hue = ((Math.round((d * 0.5 + t * 60) / 15) * 15) % 360 + 360) % 360;
+    return rainbowSprite(hue);
+  }
+  const idx = Math.floor(d / (s.r * 2.4)) % s.skin.cols.length;
+  return skinSprites(s.skin)[idx];
+}
+const glowCache = new Map();
+function glowSprite(color){
+  let c = glowCache.get(color);
+  if (!c){
+    c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+    gr.addColorStop(0, hexA(color, 0.5)); gr.addColorStop(1, hexA(color, 0));
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    glowCache.set(color, c);
+  }
+  return c;
+}
+const foodSprCache = new Map();
+function foodSprite(color){
+  let c = foodSprCache.get(color);
+  if (!c){
+    c = document.createElement('canvas'); c.width = c.height = 48;
+    const g = c.getContext('2d');
+    const isHex = color[0] === '#';
+    const a = (al) => isHex ? hexA(color, al) : color;
+    const gr = g.createRadialGradient(24, 24, 1, 24, 24, 24);
+    gr.addColorStop(0, 'rgba(255,255,255,0.95)');
+    gr.addColorStop(0.22, a(0.95));
+    gr.addColorStop(0.45, a(0.4));
+    gr.addColorStop(1, a(0));
+    g.fillStyle = gr; g.fillRect(0, 0, 48, 48);
+    foodSprCache.set(color, c);
+  }
+  return c;
+}
+// 육각형 그리드 배경 타일 (8x8 주기, 이음새 오차 <0.3px)
+function makeHexTile(){
+  const s = 26, hw = Math.sqrt(3) * s, vs = 1.5 * s; // vs = 39 (정수)
+  const w = Math.round(8 * hw), h = Math.round(8 * vs);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(150,170,230,0.055)'; g.lineWidth = 1.6;
+  g.beginPath();
+  for (let row = -1; row <= 9; row++){
+    const cy = row * vs, off = (row & 1) ? hw / 2 : 0;
+    for (let col = -1; col <= 9; col++){
+      const cx = col * hw + off;
+      for (let i = 0; i < 7; i++){
+        const a = Math.PI / 180 * (60 * i - 90);
+        const x = cx + s * Math.cos(a), y = cy + s * Math.sin(a);
+        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+    }
+  }
+  g.stroke();
+  return c;
+}
+let hexPattern = null; // init에서 생성
+
+// ---------- 먹이 시스템 ----------
+let foods = [];
+const foodGrid = new Map();
+const ci = v => ((v + WORLD_R + CELL * 2) / CELL) | 0;
+const cellKey = (x, y) => ci(x) * 1024 + ci(y);
+function gridAdd(f){
+  const k = cellKey(f.x, f.y);
+  let arr = foodGrid.get(k);
+  if (!arr){ arr = []; foodGrid.set(k, arr); }
+  arr.push(f); f.cell = k; f.inGrid = true;
+}
+function gridRemove(f){
+  const arr = foodGrid.get(f.cell);
+  if (arr){
+    const i = arr.indexOf(f);
+    if (i >= 0){ arr[i] = arr[arr.length - 1]; arr.pop(); }
+  }
+  f.inGrid = false;
+}
+function forFoodNear(x, y, range, cb){
+  const x0 = ci(x - range), x1 = ci(x + range), y0 = ci(y - range), y1 = ci(y + range);
+  for (let cx = x0; cx <= x1; cx++){
+    for (let cy = y0; cy <= y1; cy++){
+      const arr = foodGrid.get(cx * 1024 + cy);
+      if (arr) for (let i = arr.length - 1; i >= 0; i--) cb(arr[i]);
+    }
+  }
+}
+function spawnFood(x, y, val, color, r, bonus){
+  if (foods.length > 4500) return;
+  const d = Math.hypot(x, y);
+  if (d > WORLD_R - 25){ const s = (WORLD_R - 25) / d; x *= s; y *= s; }
+  const f = { x, y, val, r, color, phase: Math.random() * TAU, sprite: foodSprite(color),
+              magnet: null, cell: 0, inGrid: false, bonus: !!bonus };
+  foods.push(f); gridAdd(f);
+}
+function randomFood(){
+  const a = Math.random() * TAU, d = Math.sqrt(Math.random()) * (WORLD_R - 60);
+  const big = Math.random() < 0.12;
+  spawnFood(Math.cos(a) * d, Math.sin(a) * d, big ? 2 : 1,
+            FOOD_COLS[(Math.random() * FOOD_COLS.length) | 0], big ? rand(5, 6.5) : rand(3.4, 5), false);
+}
+function removeFoodAt(i){
+  const f = foods[i];
+  if (f.inGrid) gridRemove(f);
+  const last = foods.pop();
+  if (i < foods.length) foods[i] = last;
+}
+function updateFoods(dt){
+  for (let i = foods.length - 1; i >= 0; i--){
+    const f = foods[i], m = f.magnet;
+    if (!m) continue;
+    if (!m.alive){ f.magnet = null; if (!f.inGrid) gridAdd(f); continue; }
+    const dx = m.x - f.x, dy = m.y - f.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const step = (m.speed() + 540) * dt;
+    if (d < Math.max(step, m.r * 0.8)){
+      m.gain(f.val);
+      removeFoodAt(i);
+    } else {
+      f.x += dx / d * step; f.y += dy / d * step;
+    }
+  }
+}
+
+// ---------- 뱀 ----------
+let snakeSeq = 1;
+class Snake {
+  constructor(x, y, angle, mass, skinIdx, name, isPlayer){
+    this.id = snakeSeq++;
+    this.x = x; this.y = y; this.angle = angle; this.targetAngle = angle;
+    this.mass = mass; this.skinIdx = skinIdx; this.skin = SKINS[skinIdx];
+    this.name = name; this.isPlayer = !!isPlayer;
+    this.alive = true; this.kills = 0; this.boost = false; this.wantBoost = false;
+    this.acc = 0; this.dropAcc = 0;
+    this.deathCause = ''; this.killedBy = '';
+    this.thinkT = Math.random() * 0.15;
+    this.wanderA = angle;
+    this.aggressive = Math.random() < 0.35;
+    this.pts = [];
+    const mp = this.maxPts();
+    for (let i = 0; i < mp; i++){
+      this.pts.push({ x: x - Math.cos(angle) * i * PT_SPACE, y: y - Math.sin(angle) * i * PT_SPACE });
+    }
+    this.aabb = { minx: 0, miny: 0, maxx: 0, maxy: 0 };
+    this.updateAABB();
+  }
+  get r(){ return Math.min(6.5 + Math.sqrt(this.mass) * 0.65, 46); }
+  bodyLen(){ return 36 + this.mass * 2.2; }
+  maxPts(){ return Math.ceil(this.bodyLen() / PT_SPACE) + 2; }
+  speed(){ return this.boost ? BOOST_SPEED : BASE_SPEED; }
+  turnRate(){ return 5.4 * Math.pow(8.5 / this.r, 0.5); }
+  gain(v){
+    const f = this.mass < 400 ? 1 : this.mass < 1200 ? 0.72 : 0.5;
+    this.mass += v * f;
+  }
+  update(dt){
+    if (!this.alive) return;
+    // 조향
+    const maxTurn = this.turnRate() * dt;
+    this.angle = angNorm(this.angle + clamp(angNorm(this.targetAngle - this.angle), -maxTurn, maxTurn));
+    // 부스터: 질량 소모 + 꼬리에 펠릿 흘리기
+    if (this.boost && this.mass <= 11) this.boost = false;
+    if (this.boost){
+      this.mass = Math.max(10, this.mass - 14 * dt);
+      this.dropAcc += dt;
+      if (this.dropAcc > 0.14){
+        this.dropAcc = 0;
+        const tail = this.pts[this.pts.length - 1];
+        if (tail) spawnFood(tail.x + rand(-6, 6), tail.y + rand(-6, 6), 1, this.skin.cols[0], 3.4, false);
+      }
+    }
+    const step = this.speed() * dt;
+    this.x += Math.cos(this.angle) * step;
+    this.y += Math.sin(this.angle) * step;
+    // 맵 경계
+    if (Math.hypot(this.x, this.y) > WORLD_R){ this.die(null, 'wall'); return; }
+    // 경로 점 갱신
+    this.acc += step;
+    while (this.acc >= PT_SPACE){
+      this.acc -= PT_SPACE;
+      this.pts.unshift({ x: this.x - Math.cos(this.angle) * this.acc, y: this.y - Math.sin(this.angle) * this.acc });
+    }
+    const mp = this.maxPts();
+    while (this.pts.length > mp) this.pts.pop();
+    this.updateAABB();
+  }
+  updateAABB(){
+    const a = this.aabb;
+    a.minx = a.maxx = this.x; a.miny = a.maxy = this.y;
+    const p = this.pts;
+    for (let i = 0; i < p.length; i += 6){
+      const q = p[i];
+      if (q.x < a.minx) a.minx = q.x; else if (q.x > a.maxx) a.maxx = q.x;
+      if (q.y < a.miny) a.miny = q.y; else if (q.y > a.maxy) a.maxy = q.y;
+    }
+    const q = p[p.length - 1];
+    if (q){
+      if (q.x < a.minx) a.minx = q.x; else if (q.x > a.maxx) a.maxx = q.x;
+      if (q.y < a.miny) a.miny = q.y; else if (q.y > a.maxy) a.maxy = q.y;
+    }
+    const pad = this.r + 26;
+    a.minx -= pad; a.maxx += pad; a.miny -= pad; a.maxy += pad;
+  }
+  die(killer, cause){
+    if (!this.alive) return;
+    this.alive = false;
+    this.deathCause = cause || 'snake';
+    this.killedBy = killer ? killer.name : '';
+    // 몸 전체가 빛나는 보너스 먹이로
+    const spacing = Math.max(this.r * 1.15, 12);
+    const stepIdx = Math.max(1, Math.round(spacing / PT_SPACE));
+    for (let i = 0; i < this.pts.length; i += stepIdx){
+      const p = this.pts[i];
+      const col = this.skin.rainbow
+        ? FOOD_COLS[(Math.random() * FOOD_COLS.length) | 0]
+        : this.skin.cols[(Math.random() * this.skin.cols.length) | 0];
+      spawnFood(p.x + rand(-8, 8), p.y + rand(-8, 8), 7, col, rand(7, 10), true);
+      if (this.r > 20 && Math.random() < 0.5){
+        spawnFood(p.x + rand(-16, 16), p.y + rand(-16, 16), 4, col, rand(5, 7), true);
+      }
+    }
+    if (killer && killer.alive) killer.kills++;
+  }
+  // ---------- 봇 AI ----------
+  think(){
+    const dc = Math.hypot(this.x, this.y);
+    // 1) 경계 회피 (최우선)
+    if (dc > WORLD_R - 380){
+      this.targetAngle = Math.atan2(-this.y, -this.x) + rand(-0.4, 0.4);
+      this.wantBoost = dc > WORLD_R - 150;
+      return;
+    }
+    // 2) 전방 위험 감지
+    const r = this.r, lookD = Math.max(150, r * 7);
+    const blocked = (dAng, dist) => {
+      const a = this.angle + dAng;
+      return probeBlocked(this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, this, r);
+    };
+    const bC = blocked(0, lookD) || blocked(0, lookD * 0.5);
+    const bL = blocked(-0.7, lookD * 0.8);
+    const bR = blocked(0.7, lookD * 0.8);
+    if (bC || bL || bR){
+      if (bC){
+        if (!bL) this.targetAngle = this.angle - 1.25;
+        else if (!bR) this.targetAngle = this.angle + 1.25;
+        else this.targetAngle = this.angle + (Math.random() < 0.5 ? 2.8 : -2.8);
+        this.wantBoost = this.mass > 30 && Math.random() < 0.45;
+      } else if (bL){ this.targetAngle = this.angle + 0.55; this.wantBoost = false; }
+      else { this.targetAngle = this.angle - 0.55; this.wantBoost = false; }
+      return;
+    }
+    this.wantBoost = false;
+    // 3) 공격: 작은 뱀 앞길 끊기
+    if (this.aggressive && this.mass > 60){
+      const v = nearestSmallerSnake(this, 560);
+      if (v){
+        const lead = v.r * 10 + 60;
+        const tx = v.x + Math.cos(v.angle) * lead, ty = v.y + Math.sin(v.angle) * lead;
+        this.targetAngle = Math.atan2(ty - this.y, tx - this.x);
+        this.wantBoost = this.mass > 90 && dist2(this.x, this.y, tx, ty) > 200 * 200;
+        return;
+      }
+    }
+    // 4) 먹이 탐색
+    const f = bestFoodNear(this, 500);
+    if (f){ this.targetAngle = Math.atan2(f.y - this.y, f.x - this.x); return; }
+    // 5) 배회
+    this.wanderA = angNorm(this.wanderA + rand(-0.8, 0.8));
+    this.targetAngle = this.wanderA;
+    if (dc > WORLD_R * 0.72) this.targetAngle = angLerp(this.targetAngle, Math.atan2(-this.y, -this.x), 0.5);
+  }
+}
+
+// ---------- AI 헬퍼 ----------
+let snakes = [];
+function probeBlocked(px, py, self, rad){
+  if (px * px + py * py > (WORLD_R - 60) * (WORLD_R - 60)) return true;
+  for (const s of snakes){
+    if (s === self || !s.alive) continue;
+    const bb = s.aabb;
+    if (px < bb.minx - rad || px > bb.maxx + rad || py < bb.miny - rad || py > bb.maxy + rad) continue;
+    const thr = s.r + rad + 16, t2 = thr * thr;
+    const st = Math.max(2, Math.round(s.r / PT_SPACE));
+    const pts = s.pts;
+    for (let i = 0; i < pts.length; i += st){
+      const dx = pts[i].x - px, dy = pts[i].y - py;
+      if (dx * dx + dy * dy < t2) return true;
+    }
+  }
+  return false;
+}
+function nearestSmallerSnake(self, range){
+  let best = null, bd = range * range;
+  for (const s of snakes){
+    if (s === self || !s.alive) continue;
+    if (s.mass * 1.25 > self.mass) continue;
+    const d = dist2(self.x, self.y, s.x, s.y);
+    if (d < bd){ bd = d; best = s; }
+  }
+  return best;
+}
+function bestFoodNear(s, range){
+  let best = null, bs = 0;
+  forFoodNear(s.x, s.y, range, f => {
+    const d = dist2(s.x, s.y, f.x, f.y);
+    if (d > range * range) return;
+    const score = (f.bonus ? 2.5 : 1) * f.val / (70 + Math.sqrt(d));
+    if (score > bs){ bs = score; best = f; }
+  });
+  return best;
+}
+
+// ---------- 충돌 (머리 → 몸통) ----------
+function collisions(){
+  const deaths = [];
+  for (const a of snakes){
+    if (!a.alive) continue;
+    for (const b of snakes){
+      if (a === b || !b.alive) continue;
+      const bb = b.aabb, thr = a.r * 0.9 + b.r * 0.9;
+      if (a.x < bb.minx - thr || a.x > bb.maxx + thr || a.y < bb.miny - thr || a.y > bb.maxy + thr) continue;
+      const t2 = thr * thr;
+      const st = Math.max(1, Math.round(b.r * 0.8 / PT_SPACE));
+      const pts = b.pts;
+      let hit = -1;
+      for (let i = 0; i < pts.length; i += st){
+        const dx = pts[i].x - a.x, dy = pts[i].y - a.y;
+        if (dx * dx + dy * dy < t2){ hit = i; break; }
+      }
+      if (hit >= 0){
+        if (hit * PT_SPACE < b.r * 1.4){ // 사실상 정면 충돌 → 작은 쪽이 죽는다
+          if (a.mass <= b.mass * 1.12) deaths.push([a, b]);
+          if (b.mass <= a.mass * 1.12) deaths.push([b, a]);
+        } else {
+          deaths.push([a, b]);
+        }
+        break;
+      }
+    }
+  }
+  for (const [dead, killer] of deaths){
+    if (dead.alive) dead.die(killer, 'snake');
+  }
+}
+
+// ---------- 먹기 (흡입) ----------
+function eatUpdate(){
+  for (const s of snakes){
+    if (!s.alive) continue;
+    const su = s.r + 34, su2 = su * su;
+    forFoodNear(s.x, s.y, su, f => {
+      if (f.magnet) return;
+      if (dist2(s.x, s.y, f.x, f.y) < su2){
+        f.magnet = s;
+        if (f.inGrid) gridRemove(f);
+      }
+    });
+  }
+}
+
+// ---------- 스폰 ----------
+let usedNames = 0, namePool = BOT_NAMES.slice();
+for (let i = namePool.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [namePool[i], namePool[j]] = [namePool[j], namePool[i]]; }
+function nextBotName(){
+  const base = namePool[usedNames % namePool.length];
+  const suffix = usedNames >= namePool.length ? ((Math.random() * 90 + 10) | 0) : '';
+  usedNames++;
+  return base + suffix;
+}
+function findSpot(minSnakeDist, avoidView){
+  for (let tries = 0; tries < 40; tries++){
+    const a = Math.random() * TAU, d = Math.sqrt(Math.random()) * (WORLD_R - 600);
+    const x = Math.cos(a) * d, y = Math.sin(a) * d;
+    let ok = true;
+    for (const s of snakes){
+      if (!s.alive) continue;
+      if (dist2(x, y, s.x, s.y) < minSnakeDist * minSnakeDist){ ok = false; break; }
+    }
+    if (ok && avoidView){
+      const half = Math.hypot(W, H) / (2 * cam.z) + 260;
+      if (dist2(x, y, cam.x, cam.y) < half * half) ok = false;
+    }
+    if (ok && probeBlocked(x, y, null, 70)) ok = false;
+    if (ok) return { x, y };
+  }
+  const a = Math.random() * TAU, d = Math.sqrt(Math.random()) * (WORLD_R - 800);
+  return { x: Math.cos(a) * d, y: Math.sin(a) * d };
+}
+function spawnBot(big){
+  const p = findSpot(420, state !== 'menu');
+  const mass = big ? rand(300, 700) : 10 + Math.pow(Math.random(), 1.7) * 260;
+  const bot = new Snake(p.x, p.y, rand(0, TAU), mass, (Math.random() * SKINS.length) | 0, nextBotName(), false);
+  snakes.push(bot);
+  return bot;
+}
+
+// ---------- 게임 상태 ----------
+let state = 'menu'; // menu | playing | dead
+let player = null;
+let cam = { x: 0, y: 0, z: 0.6 };
+let t = 0, startT = 0, deathAt = 0, deathShown = false;
+let menuFocus = null, menuFocusUntil = 0;
+let botRespawnT = 0;
+let mouseWX = 0, mouseWY = 0;
+window.__fps = 60;
+
+const input = { mx: W / 2 + 120, my: H / 2, boost: false, touchSteer: null, touchBoost: null };
+
+// ---------- 입력 ----------
+window.addEventListener('mousemove', e => { input.mx = e.clientX; input.my = e.clientY; });
+window.addEventListener('mousedown', e => {
+  if (state === 'playing' && e.button === 0 && e.target === canvas) input.boost = true;
+});
+window.addEventListener('mouseup', () => { input.boost = false; });
+window.addEventListener('blur', () => { input.boost = false; });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW'){
+    const el = document.activeElement;
+    if (el && el.tagName === 'INPUT') return;
+    if (state === 'playing'){ input.boost = true; e.preventDefault(); }
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') input.boost = false;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const tc of e.changedTouches){
+    if (input.touchSteer === null){ input.touchSteer = tc.identifier; input.mx = tc.clientX; input.my = tc.clientY; }
+    else if (input.touchBoost === null){ input.touchBoost = tc.identifier; input.boost = true; }
+  }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const tc of e.changedTouches){
+    if (tc.identifier === input.touchSteer){ input.mx = tc.clientX; input.my = tc.clientY; }
+  }
+}, { passive: false });
+function touchEnd(e){
+  for (const tc of e.changedTouches){
+    if (tc.identifier === input.touchSteer) input.touchSteer = null;
+    if (tc.identifier === input.touchBoost){ input.touchBoost = null; input.boost = false; }
+  }
+}
+canvas.addEventListener('touchend', touchEnd);
+canvas.addEventListener('touchcancel', touchEnd);
+
+// ---------- 카메라 ----------
+function zoomFor(r){
+  const sizeF = clamp(Math.min(W, H) / 900, 0.72, 1.35);
+  return clamp(1.55 * Math.pow(8.5 / r, 0.6), 0.34, 1.7) * sizeF;
+}
+function updateCamera(dt){
+  let tx, ty, tz;
+  if (state === 'playing' && player && player.alive){
+    tx = player.x; ty = player.y; tz = zoomFor(player.r);
+  } else {
+    if (!menuFocus || !menuFocus.alive || t > menuFocusUntil){
+      let biggest = null;
+      for (const s of snakes) if (!biggest || s.mass > biggest.mass) biggest = s;
+      menuFocus = biggest; menuFocusUntil = t + 8;
+    }
+    if (menuFocus){ tx = menuFocus.x; ty = menuFocus.y; } else { tx = 0; ty = 0; }
+    tz = 0.55 * clamp(Math.min(W, H) / 900, 0.72, 1.2);
+  }
+  const f = Math.min(1, dt * 8), fz = Math.min(1, dt * 2.4);
+  cam.x += (tx - cam.x) * f; cam.y += (ty - cam.y) * f; cam.z += (tz - cam.z) * fz;
+}
+
+// ---------- 렌더링 ----------
+const labels = [];
+function drawBackground(){
+  const z = cam.z, vw = W / z, vh = H / z;
+  const x0 = cam.x - vw / 2, y0 = cam.y - vh / 2;
+  ctx.fillStyle = '#05060A';
+  ctx.fillRect(x0 - 4, y0 - 4, vw + 8, vh + 8);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, WORLD_R, 0, TAU); ctx.clip();
+  ctx.fillStyle = '#10131F';
+  ctx.fillRect(x0, y0, vw, vh);
+  ctx.fillStyle = hexPattern;
+  ctx.fillRect(x0, y0, vw, vh);
+  ctx.restore();
+  // 경계 링
+  ctx.beginPath(); ctx.arc(0, 0, WORLD_R + 58, 0, TAU);
+  ctx.strokeStyle = 'rgba(255,45,45,0.08)'; ctx.lineWidth = 120; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, WORLD_R + 6, 0, TAU);
+  ctx.strokeStyle = 'rgba(255,55,45,0.45)'; ctx.lineWidth = 13; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, WORLD_R, 0, TAU);
+  ctx.strokeStyle = '#C81E1E'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, WORLD_R - 72, 0, TAU);
+  ctx.strokeStyle = 'rgba(255,60,50,0.05)'; ctx.lineWidth = 140; ctx.stroke();
+}
+function drawFoods(){
+  const z = cam.z, vw = W / z, vh = H / z;
+  const x0 = cam.x - vw / 2 - 60, y0 = cam.y - vh / 2 - 60, x1 = x0 + vw + 120, y1 = y0 + vh + 120;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < foods.length; i++){
+    const f = foods[i];
+    if (f.x < x0 || f.x > x1 || f.y < y0 || f.y > y1) continue;
+    const pr = f.r * (1 + 0.14 * Math.sin(f.phase + t * 3));
+    const sz = pr * 4.4;
+    ctx.drawImage(f.sprite, f.x - sz / 2, f.y - sz / 2, sz, sz);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function drawEyes(g, x, y, r, heading, look){
+  const bx = Math.cos(heading), by = Math.sin(heading);
+  const px = -by, py = bx;
+  const ldx = Math.cos(look), ldy = Math.sin(look);
+  for (const side of [-1, 1]){
+    const ex = x + bx * r * 0.30 + px * r * 0.52 * side;
+    const ey = y + by * r * 0.30 + py * r * 0.52 * side;
+    const er = r * 0.44;
+    g.fillStyle = '#FFFFFF';
+    g.beginPath(); g.arc(ex, ey, er, 0, TAU); g.fill();
+    g.lineWidth = Math.max(0.8, er * 0.14); g.strokeStyle = 'rgba(0,0,0,0.3)';
+    g.stroke();
+    g.fillStyle = '#14161C';
+    g.beginPath(); g.arc(ex + ldx * er * 0.38, ey + ldy * er * 0.38, er * 0.52, 0, TAU); g.fill();
+  }
+}
+function drawSnake(s){
+  const z = cam.z, vw = W / z, vh = H / z;
+  const vx0 = cam.x - vw / 2, vy0 = cam.y - vh / 2;
+  const bb = s.aabb;
+  if (bb.maxx < vx0 || bb.minx > vx0 + vw || bb.maxy < vy0 || bb.miny > vy0 + vh) return;
+
+  const r = s.r;
+  const segSp = Math.max(2.6, r * 0.45);
+  const n = Math.min(460, Math.floor(s.bodyLen() / segSp));
+  const sc = r / SEG_R, off = 32 * sc, dsz = 64 * sc;
+  const pts = s.pts;
+  if (pts.length < 2 || n < 1) return;
+
+  // 부스터 글로우
+  if (s.boost){
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.26 + 0.1 * Math.sin(t * 12);
+    const gspr = glowSprite(s.skin.rainbow ? '#FFFFFF' : s.skin.cols[0]);
+    const gsz = dsz * 2.3;
+    for (let k = 0; k < n; k += 3){
+      const f = (n - 1 - k) * segSp / PT_SPACE;
+      let i0 = f | 0; const fr = f - i0;
+      if (i0 > pts.length - 2){ i0 = pts.length - 2; }
+      const p0 = pts[i0], p1 = pts[i0 + 1];
+      const x = p0.x + (p1.x - p0.x) * fr, y = p0.y + (p1.y - p0.y) * fr;
+      ctx.drawImage(gspr, x - gsz / 2, y - gsz / 2, gsz, gsz);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // 몸통 (꼬리 → 머리)
+  for (let k = 0; k < n; k++){
+    const distHead = (n - 1 - k) * segSp;
+    const f = distHead / PT_SPACE;
+    let i0 = f | 0; let fr = f - i0;
+    if (i0 > pts.length - 2){ i0 = pts.length - 2; fr = 1; }
+    const p0 = pts[i0], p1 = pts[i0 + 1];
+    const x = p0.x + (p1.x - p0.x) * fr, y = p0.y + (p1.y - p0.y) * fr;
+    ctx.drawImage(spriteForDist(s, distHead), x - off, y - off, dsz, dsz);
+  }
+  // 머리 + 눈
+  ctx.drawImage(spriteForDist(s, 0), s.x - off, s.y - off, dsz, dsz);
+  const look = s.isPlayer ? Math.atan2(mouseWY - s.y, mouseWX - s.x) : s.targetAngle;
+  drawEyes(ctx, s.x, s.y, r, s.angle, look);
+  // 이름표 (화면 좌표로 수집)
+  if (!s.isPlayer){
+    const sx = (s.x - cam.x) * z + W / 2, sy = (s.y - r * 1.6 - cam.y) * z + H / 2 - 10;
+    if (sx > -80 && sx < W + 80 && sy > -40 && sy < H + 40) labels.push({ sx, sy, text: s.name });
+  }
+}
+function drawLabels(){
+  if (!labels.length) return;
+  ctx.font = '600 12px -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  for (const L of labels){
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(L.text, L.sx, L.sy);
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillText(L.text, L.sx, L.sy);
+  }
+}
+function render(){
+  ctx.setTransform(DPR * cam.z, 0, 0, DPR * cam.z, DPR * (W / 2 - cam.x * cam.z), DPR * (H / 2 - cam.y * cam.z));
+  drawBackground();
+  drawFoods();
+  labels.length = 0;
+  const order = snakes.slice().sort((a, b) => a.mass - b.mass);
+  for (const s of order) drawSnake(s);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawLabels();
+  ctx.drawImage(vig, 0, 0, W, H);
+  if (state === 'menu') drawSkinPreview();
+}
+
+// ---------- 미니맵 ----------
+const mmCanvas = document.getElementById('minimap');
+const MM = 138;
+mmCanvas.width = MM * DPR; mmCanvas.height = MM * DPR;
+mmCanvas.style.width = MM + 'px'; mmCanvas.style.height = MM + 'px';
+const mmCtx = mmCanvas.getContext('2d');
+function drawMinimap(){
+  const g = mmCtx;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, MM, MM);
+  const c = MM / 2, sc = (c - 7) / WORLD_R;
+  g.beginPath(); g.arc(c, c, c - 6, 0, TAU);
+  g.fillStyle = 'rgba(6,8,14,0.55)'; g.fill();
+  g.strokeStyle = 'rgba(255,70,60,0.55)'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.4)';
+  for (const s of snakes){
+    if (s.isPlayer) continue;
+    g.fillRect(c + s.x * sc - 1, c + s.y * sc - 1, 2, 2);
+  }
+  if (player && player.alive){
+    const px = c + player.x * sc, py = c + player.y * sc;
+    g.strokeStyle = 'rgba(125,255,138,0.8)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(px, py);
+    g.lineTo(px + Math.cos(player.angle) * 8, py + Math.sin(player.angle) * 8); g.stroke();
+    g.fillStyle = '#7DFF8A';
+    g.beginPath(); g.arc(px, py, 3, 0, TAU); g.fill();
+  }
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const startScreen = $('startScreen'), gameOver = $('gameOver'), hud = $('hud'), lb = $('leaderboard');
+const nameInput = $('nameInput'), skinNameEl = $('skinName'), bestLine = $('bestLine');
+let skinIdx = parseInt(lsGet('kkomuri_skin') || '0', 10) % SKINS.length;
+if (isNaN(skinIdx) || skinIdx < 0) skinIdx = 0;
+nameInput.value = lsGet('kkomuri_name') || '';
+
+// 스킨 미리보기
+const spCanvas = $('skinPreview');
+let spCtx = null, spW = 0, spH = 0;
+function setupSkinPreview(){
+  const rect = spCanvas.getBoundingClientRect();
+  spW = Math.max(150, rect.width); spH = rect.height || 88;
+  spCanvas.width = spW * DPR; spCanvas.height = spH * DPR;
+  spCtx = spCanvas.getContext('2d');
+}
+function drawSkinPreview(){
+  if (!spCtx) return;
+  const g = spCtx;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, spW, spH);
+  const fake = { skin: SKINS[skinIdx], r: 13 };
+  const nSeg = 22, sp = (spW - 70) / nSeg;
+  for (let i = nSeg - 1; i >= 0; i--){
+    const x = spW - 36 - i * sp;
+    const y = spH / 2 + Math.sin(i * 0.52 - t * 2.6) * 13;
+    const spr = spriteForDist(fake, i * 10);
+    const sc = fake.r / SEG_R;
+    g.drawImage(spr, x - 32 * sc, y - 32 * sc, 64 * sc, 64 * sc);
+  }
+  const hx = spW - 36, hy = spH / 2 + Math.sin(-t * 2.6) * 13;
+  const hy2 = spH / 2 + Math.sin(0.52 - t * 2.6) * 13;
+  drawEyes(g, hx, hy, 13, Math.atan2(hy - hy2, sp), 0);
+}
+function updateSkinUI(){
+  skinNameEl.textContent = SKINS[skinIdx].name;
+  lsSet('kkomuri_skin', String(skinIdx));
+}
+$('skinPrev').addEventListener('click', () => { skinIdx = (skinIdx + SKINS.length - 1) % SKINS.length; updateSkinUI(); });
+$('skinNext').addEventListener('click', () => { skinIdx = (skinIdx + 1) % SKINS.length; updateSkinUI(); });
+
+function refreshBestLine(){
+  const best = parseInt(lsGet('kkomuri_best') || '0', 10);
+  if (best > 0){
+    bestLine.textContent = '🏆 최고 기록 ' + best;
+    bestLine.classList.remove('hidden');
+  }
+}
+function startGame(){
+  const name = (nameInput.value || '').trim().slice(0, 12) || '이름없는 꼬물이';
+  lsSet('kkomuri_name', name);
+  if (player && player.alive){ player.alive = false; }
+  const p = findSpot(700, false);
+  const angle = Math.atan2(-p.y, -p.x);
+  player = new Snake(p.x, p.y, angle, 10, skinIdx, name, true);
+  snakes.push(player);
+  state = 'playing'; startT = t; deathShown = false; input.boost = false;
+  cam.x = p.x; cam.y = p.y; cam.z = zoomFor(player.r);
+  startScreen.classList.add('hidden');
+  gameOver.classList.add('hidden');
+  hud.classList.remove('hidden');
+  lb.classList.remove('hidden');
+  mmCanvas.classList.remove('hidden');
+  nameInput.blur();
+}
+function showGameOver(){
+  const len = Math.floor(player.mass);
+  const surv = Math.max(0, t - startT);
+  const mm = Math.floor(surv / 60), ss = Math.floor(surv % 60);
+  let best = parseInt(lsGet('kkomuri_best') || '0', 10);
+  if (len > best){ best = len; lsSet('kkomuri_best', String(best)); }
+  $('goTitle').textContent = player.deathCause === 'wall' ? '🧱 벽에 부딪혔다!' : '💀 잡아먹혔다!';
+  $('goKilledBy').textContent = player.deathCause === 'wall'
+    ? '빨간 경계선은 뱀도 못 넘습니다'
+    : (player.killedBy ? `「${player.killedBy}」의 몸통에 머리를 박았다` : '');
+  $('goLen').textContent = len;
+  $('goKills').textContent = player.kills;
+  $('goTime').textContent = mm + ':' + String(ss).padStart(2, '0');
+  $('goBest').textContent = best;
+  gameOver.classList.remove('hidden');
+  hud.classList.add('hidden');
+  refreshBestLine();
+}
+$('playBtn').addEventListener('click', startGame);
+$('againBtn').addEventListener('click', startGame);
+$('menuBtn').addEventListener('click', () => {
+  state = 'menu';
+  gameOver.classList.add('hidden');
+  hud.classList.add('hidden'); lb.classList.add('hidden'); mmCanvas.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+  setupSkinPreview();
+});
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
+
+let lbT = 0;
+function uiTick(dt){
+  // 사망 → 오버레이
+  if (state === 'dead' && !deathShown && t - deathAt > 0.9){
+    deathShown = true;
+    showGameOver();
+  }
+  lbT -= dt;
+  if (lbT > 0) return;
+  lbT = 0.25;
+  if (state === 'menu') return;
+  // HUD
+  if (player){
+    $('hudLen').textContent = Math.floor(player.mass);
+    $('hudKills').textContent = player.kills;
+  }
+  // 리더보드
+  const sorted = snakes.filter(s => s.alive).sort((a, b) => b.mass - a.mass);
+  const total = sorted.length;
+  let myRank = 0;
+  for (let i = 0; i < total; i++) if (sorted[i] === player){ myRank = i + 1; break; }
+  $('hudRank').textContent = (player && player.alive && myRank) ? myRank + '/' + total : '-';
+  let html = '<div class="lb-title">리더보드</div>';
+  const top = sorted.slice(0, 10);
+  for (let i = 0; i < top.length; i++){
+    const s = top[i];
+    const cls = 'lb-row' + (i === 0 ? ' top1' : '') + (s === player ? ' me' : '');
+    html += `<div class="${cls}">${i + 1}. ${escapeHtml(s.name)}<span>${Math.floor(s.mass)}</span></div>`;
+  }
+  if (player && player.alive && myRank > 10){
+    html += `<div class="lb-gap"></div><div class="lb-row me">${myRank}. ${escapeHtml(player.name)}<span>${Math.floor(player.mass)}</span></div>`;
+  }
+  lb.innerHTML = html;
+  drawMinimap();
+}
+
+// ---------- 프레임별 제어 ----------
+function playerControl(){
+  if (state !== 'playing' || !player || !player.alive) return;
+  const hsx = (player.x - cam.x) * cam.z + W / 2;
+  const hsy = (player.y - cam.y) * cam.z + H / 2;
+  const dx = input.mx - hsx, dy = input.my - hsy;
+  if (dx * dx + dy * dy > 196) player.targetAngle = Math.atan2(dy, dx);
+  player.boost = input.boost && player.mass > 11;
+  mouseWX = cam.x + (input.mx - W / 2) / cam.z;
+  mouseWY = cam.y + (input.my - H / 2) / cam.z;
+}
+function botControl(dt){
+  for (const s of snakes){
+    if (s.isPlayer || !s.alive) continue;
+    s.thinkT -= dt;
+    if (s.thinkT <= 0){ s.thinkT = rand(0.09, 0.18); s.think(); }
+    s.boost = s.wantBoost && s.mass > 24;
+  }
+}
+function postDeath(dt){
+  // 플레이어 사망 감지
+  if (player && !player.alive && state === 'playing'){
+    state = 'dead'; deathAt = t; input.boost = false;
+  }
+  // 죽은 뱀 제거
+  for (let i = snakes.length - 1; i >= 0; i--){
+    if (!snakes[i].alive) snakes.splice(i, 1);
+  }
+  // 봇 리스폰
+  const botCount = snakes.length - (player && player.alive ? 1 : 0);
+  if (botCount < BOT_TARGET){
+    botRespawnT -= dt;
+    if (botRespawnT <= 0){ botRespawnT = 0.9; spawnBot(false); }
+  }
+  // 먹이 보충
+  let budget = 4;
+  while (foods.length < FOOD_TARGET && budget-- > 0) randomFood();
+}
+
+// ---------- 메인 루프 ----------
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - last) / 1000; last = now;
+  if (dt <= 0) return;
+  if (dt > 0.05) dt = 0.05;
+  t += dt;
+  window.__fps = window.__fps * 0.95 + 0.05 / dt;
+  playerControl();
+  botControl(dt);
+  for (const s of snakes) s.update(dt);
+  collisions();
+  eatUpdate();
+  updateFoods(dt);
+  postDeath(dt);
+  updateCamera(dt);
+  render();
+  uiTick(dt);
+}
+
+// ---------- 초기화 ----------
+function init(){
+  hexPattern = ctx.createPattern(makeHexTile(), 'repeat');
+  for (let i = 0; i < FOOD_TARGET; i++) randomFood();
+  for (let i = 0; i < BOT_TARGET; i++) spawnBot(i < 4);
+  updateSkinUI();
+  refreshBestLine();
+  setupSkinPreview();
+  requestAnimationFrame(frame);
+}
+init();
+</script>
+
+<a href="../" id="arcadeHome" title="게임천국으로 돌아가기">🕹️ <span>게임천국</span></a>
+<style>
+#arcadeHome{
+  position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:30;
+  display:flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px;
+  background:rgba(7,9,15,.55); border:1px solid rgba(255,255,255,.1);
+  color:#98A1BC; font-size:12px; text-decoration:none; letter-spacing:.5px;
+  backdrop-filter:blur(6px);
+}
+#arcadeHome:hover{ color:#fff; border-color:rgba(255,255,255,.3); background:rgba(7,9,15,.75); }
+@media (max-width:520px){ #arcadeHome span{ display:none; } #arcadeHome{ padding:6px 10px; } }
+</style>

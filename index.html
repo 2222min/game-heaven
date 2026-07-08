@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>🕹️ 게임천국 — 아케이드</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕹️</text></svg>">
+<style>
+  :root{
+    --bg:#0A0C13; --panel:rgba(14,17,29,.75); --line:rgba(255,255,255,.08);
+    --txt:#E9ECF5; --sub:#98A1BC; --dim:#5E6883;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--txt); overflow-x:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,"Malgun Gothic","Segoe UI",Roboto,sans-serif;
+  }
+  .orb{ position:fixed; border-radius:50%; filter:blur(90px); opacity:.16; pointer-events:none; z-index:0; }
+  .orb.a{ width:420px; height:420px; background:#39D5FF; top:-120px; left:-100px; animation:drift 26s ease-in-out infinite alternate; }
+  .orb.b{ width:380px; height:380px; background:#B08CFF; bottom:-140px; right:-80px; animation:drift 32s ease-in-out infinite alternate-reverse; }
+  .orb.c{ width:300px; height:300px; background:#57D964; top:40%; left:60%; animation:drift 38s ease-in-out infinite alternate; }
+  @keyframes drift{ from{ transform:translate(0,0); } to{ transform:translate(60px,40px); } }
+  @media (prefers-reduced-motion: reduce){ .orb{ animation:none; } }
+
+  .wrap{ position:relative; z-index:1; max-width:960px; margin:0 auto; padding:56px 22px 60px; }
+  header{ text-align:center; margin-bottom:40px; }
+  h1{
+    margin:0; font-size:52px; font-weight:800; letter-spacing:2px; line-height:1.15;
+    background:linear-gradient(92deg,#6CFF74 5%,#39D5FF 38%,#B08CFF 70%,#FF6FA5 98%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 2px 20px rgba(90,220,140,.25));
+  }
+  .sub{ margin:10px 0 0; color:var(--sub); font-size:14.5px; letter-spacing:.5px; }
+  .sub b{ color:#7DFF8A; font-weight:700; }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:18px; }
+  .card{
+    display:flex; flex-direction:column; text-decoration:none; color:inherit;
+    background:var(--panel); border:1px solid var(--line); border-radius:20px; overflow:hidden;
+    transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    backdrop-filter:blur(10px);
+  }
+  .card:hover{ transform:translateY(-4px); border-color:rgba(255,255,255,.22); box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .card:focus-visible{ outline:2px solid #7DFF8A; outline-offset:3px; }
+  .thumb{
+    height:132px; display:flex; align-items:center; justify-content:center; font-size:64px;
+    text-shadow:0 6px 24px rgba(0,0,0,.45); position:relative; transition:font-size .18s ease;
+  }
+  .thumb::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg, transparent 55%, rgba(10,12,19,.55)); }
+  .card:hover .thumb{ font-size:70px; }
+  .body{ padding:16px 18px 18px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .name{ font-size:18px; font-weight:800; letter-spacing:.3px; }
+  .desc{ margin:0; font-size:13px; color:var(--sub); line-height:1.65; flex:1; }
+  .meta{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:2px; }
+  .tag{
+    font-size:11px; padding:3px 9px; border-radius:12px; letter-spacing:.5px;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); color:var(--sub);
+  }
+  .tag.hot{ background:rgba(87,217,100,.12); border-color:rgba(87,217,100,.35); color:#7DFF8A; }
+  .live{ display:none; font-size:11.5px; align-items:center; gap:5px; color:#7DFF8A; }
+  .live.off{ color:var(--dim); }
+  .live .pulse{
+    width:7px; height:7px; border-radius:50%; background:#57D964; box-shadow:0 0 8px #57D964;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  .live.off .pulse{ background:#5E6883; box-shadow:none; animation:none; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+  .play{
+    margin-top:4px; align-self:flex-start; font-size:12.5px; font-weight:700; letter-spacing:1px;
+    color:#06230C; background:linear-gradient(180deg,#63E070,#2FAE4A);
+    padding:7px 16px; border-radius:10px; box-shadow:0 4px 14px rgba(63,205,90,.25);
+  }
+  .card:hover .play{ filter:brightness(1.1); }
+
+  footer{ margin-top:44px; text-align:center; color:var(--dim); font-size:11.5px; line-height:1.9; }
+  footer a{ color:var(--sub); }
+  code{ background:rgba(255,255,255,.06); padding:1px 6px; border-radius:5px; }
+
+  @media (max-width:560px){
+    .wrap{ padding:40px 16px 48px; }
+    h1{ font-size:38px; }
+    .thumb{ height:110px; font-size:54px; }
+  }
+</style>
+</head>
+<body>
+<div class="orb a"></div><div class="orb b"></div><div class="orb c"></div>
+<div class="wrap">
+  <header>
+    <h1>🕹️ 게임천국</h1>
+    <p class="sub">원하는 게임을 골라 입장하세요 · <b id="liveTotal"></b></p>
+  </header>
+  <main class="grid" id="grid"></main>
+  <footer>
+    친구에게 이 페이지 주소를 그대로 보내면 함께 플레이할 수 있습니다.<br>
+    새 게임 추가: <code>&lt;폴더&gt;/index.html</code> 로 넣고 이 페이지의 GAMES 목록에 한 줄이면 끝.
+  </footer>
+</div>
+<script src="config.js"></script>
+<script>
+'use strict';
+// ---- 멀티플레이 서버 주소 결정 ----
+// GitHub Pages(정적)에서는 config.js 의 ARCADE_SERVER 를 사용.
+// server.js 가 직접 서빙 중이면(로컬/터널) 항상 현재 주소를 사용 — config 가 오래돼도 안 깨짐.
+const ON_STATIC = location.hostname.endsWith('github.io') || location.protocol === 'file:';
+const SERVER = (ON_STATIC && typeof window.ARCADE_SERVER === 'string' && window.ARCADE_SERVER)
+  ? window.ARCADE_SERVER.replace(/\/+$/, '') : '';
+
+// ---- 게임 목록: 여기에 한 줄 추가하면 카드가 생깁니다 ----
+const GAMES = [
+  {
+    path: SERVER ? SERVER + '/kkomuri/' : 'kkomuri/',
+    icon: '🐍', name: '꼬물이.io',
+    desc: '실시간 멀티플레이 스네이크 아레나. 접속한 모두가 하나의 월드에서 먹고, 자라고, 살아남는다.',
+    tags: ['멀티플레이', '실시간'], hot: true, live: true,
+    grad: ['#123E22', '#0E3B4E'],
+  },
+  {
+    path: 'solo/', icon: '🤖', name: '꼬물이.io 싱글',
+    desc: 'AI 뱀 26마리와 겨루는 오프라인 버전. 서버 없이 혼자서 가볍게 연습하기 좋다.',
+    tags: ['싱글', '연습'],
+    grad: ['#2B2350', '#1A1B3A'],
+  },
+  {
+    path: 'pirate/', icon: '🏴‍☠️', name: '해적왕 랜덤 디펜스',
+    desc: '랜덤 소환으로 해적단을 모으고, 같은 캐릭터 셋을 합성·승급! 40라운드 웨이브를 버텨라.',
+    tags: ['디펜스', '전략', '랜덤'],
+    grad: ['#4A2E10', '#3A1220'],
+  },
+];
+
+const grid = document.getElementById('grid');
+for (const g of GAMES){
+  const a = document.createElement('a');
+  a.className = 'card'; a.href = g.path;
+  a.innerHTML = `
+    <div class="thumb" style="background:linear-gradient(135deg, ${g.grad[0]}, ${g.grad[1]})">${g.icon}</div>
+    <div class="body">
+      <div class="name">${g.name}</div>
+      <p class="desc">${g.desc}</p>
+      <div class="meta">
+        ${g.tags.map((t,i) => `<span class="tag${g.hot && i===0 ? ' hot' : ''}">${t}</span>`).join('')}
+        ${g.live ? '<span class="live"><span class="pulse"></span><span class="n"></span></span>' : ''}
+      </div>
+      <span class="play">PLAY ▶</span>
+    </div>`;
+  grid.appendChild(a);
+}
+
+// ---- 꼬물이 멀티플레이 실시간 접속자 수 / 서버 상태 ----
+async function refreshStats(){
+  const el = document.querySelector('.live');
+  try {
+    const r = await fetch(SERVER + '/stats', { cache: 'no-store' });
+    if (!r.ok) throw new Error('bad status');
+    const s = await r.json();
+    if (el){
+      el.style.display = 'inline-flex';
+      el.classList.remove('off');
+      el.querySelector('.n').textContent = s.players > 0 ? `지금 ${s.players}명 플레이 중` : 'AI 봇 대기 중 · 첫 입장 찬스';
+    }
+    document.getElementById('liveTotal').textContent =
+      s.players > 0 ? `꼬물이.io에 ${s.players}명 접속 중 🟢` : '게임 3종 가동 중';
+  } catch (e){
+    if (el){
+      el.style.display = 'inline-flex';
+      el.classList.add('off');
+      el.querySelector('.n').textContent = '멀티 서버 오프라인';
+    }
+    document.getElementById('liveTotal').textContent = '게임 3종';
+  }
+}
+refreshStats();
+setInterval(refreshStats, 5000);
+</script>
+</body>
+</html>
