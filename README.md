@@ -47,6 +47,18 @@ Render / Railway / Fly.io 등에 이 레포를 연결하고 시작 명령을 `no
 2. `index.html`(허브)의 `GAMES` 배열에 한 줄 추가한다
 3. 커밋 & 푸시 — 끝
 
+## 해적왕 랜덤 디펜스 업데이트 반영
+
+`pirate/`는 [원본 레포](https://github.com/2222min/pirate-random-defense)의 복사본입니다.
+GitHub Action이 **30분마다 자동 동기화**하며, 급하면 두 가지 방법으로 즉시 반영할 수 있습니다:
+
+- GitHub → Actions → "해적왕 랜덤 디펜스 자동 동기화" → **Run workflow**
+- 또는 로컬에서:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/2222min/pirate-random-defense/main/index.html -o pirate/index.html
+  git commit -am "sync pirate" && git push
+  ```
+
 ## 조작 (꼬물이.io)
 
 - **PC**: 마우스 또는 방향키/WASD 조종 · 클릭/`Space` 꾹 = 부스터
