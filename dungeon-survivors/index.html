@@ -101,6 +101,9 @@
   .lucard{border-left:3px solid var(--rc,#888)}
   .lucard .ic{background:linear-gradient(#2a2142,#1a1430)}
   .badge{background:color-mix(in srgb,var(--rc) 30%,#0000);color:var(--rc);box-shadow:inset 0 0 0 1px var(--rc)}
+  .lucard.kb{box-shadow:inset 0 0 0 2px var(--rc),0 0 16px color-mix(in srgb,var(--rc) 35%,#0000),0 5px 12px #0006;transform:translateX(4px)}
+  .knum{position:absolute;right:9px;top:8px;font-size:10px;font-weight:700;color:var(--dim);background:#ffffff12;border-radius:5px;padding:1px 6px}
+  @media (hover:none) and (pointer:coarse){.knum,.kbhint{display:none}}
 
   /* shop */
   .shoplist{display:flex;flex-direction:column;gap:8px;width:100%;max-height:52vh;overflow-y:auto;padding-right:4px}
@@ -392,6 +395,16 @@ const Input={
   init(cv){
     addEventListener('keydown',e=>{ this.keys[e.key.toLowerCase()]=true;
       if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
+      // level-up cards: full keyboard control
+      if(G.state==='levelup'&&G.luChoices){
+        const k=e.key,n=G.luChoices.length;
+        if(k>='1'&&k<='4'){const i=+k-1;if(i<n){e.preventDefault();chooseUpgrade(i);}return;}
+        if(k==='ArrowUp'||k==='ArrowDown'||k==='w'||k==='s'){e.preventDefault();
+          G.luSel=((G.luSel??0)+((k==='ArrowUp'||k==='w')?-1:1)+n)%n;UI.luHighlight();return;}
+        if(k==='Enter'||k===' '){e.preventDefault();if(document.activeElement)document.activeElement.blur();chooseUpgrade(G.luSel??0);return;}
+        if(k==='r'||k==='R'){e.preventDefault();rerollChoices();return;}
+        return; // swallow other keys while picking (no pause toggle)
+      }
       if(e.key===' '||e.key==='Escape')Game.togglePause();
     },{passive:false});
     addEventListener('keyup',e=>{this.keys[e.key.toLowerCase()]=false;});
@@ -735,7 +748,7 @@ function updatePersistent(p,dt){
       if(w.t>=tick){w.t=0;const r2=rad*rad;
         for(const e of G.enemies){if(dist2(p.x,p.y,e.x,e.y)<=r2+e.r*e.r){const cr=critRoll(p);
           damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color);
-          const m=Math.hypot(e.x-p.x,e.y-p.y)||1;e.knock.x+=(e.x-p.x)/m*55;e.knock.y+=(e.y-p.y)/m*55;}}
+          const m=Math.hypot(e.x-p.x,e.y-p.y)||1;const kb=55*(e.boss?0.12:e.elite?0.35:1)/(1+G.time/360);e.knock.x+=(e.x-p.x)/m*kb;e.knock.y+=(e.y-p.y)/m*kb;}}
       }
       w._rad=rad;
     }
@@ -752,7 +765,7 @@ function enemyHit(e,key,cd){const t=e.hcd[key]||0;if(G.time>=t){e.hcd[key]=G.tim
 function damageEnemy(e,dmg,crit,dir,color){
   dmg=Math.max(1,Math.round(dmg));
   e.hp-=dmg;e.flash=0.12;
-  if(dir){const m=Math.hypot(dir.x,dir.y)||1;const k=e.boss?6:(e.elite?16:34);e.knock.x+=dir.x/m*k;e.knock.y+=dir.y/m*k;}
+  if(dir){const m=Math.hypot(dir.x,dir.y)||1;const k=(e.boss?6:(e.elite?16:34))/(1+G.time/360);e.knock.x+=dir.x/m*k;e.knock.y+=dir.y/m*k;} // knockback resist grows over time
   FX.text(e.x,e.y-e.r,String(dmg),crit?'#ffd45c':'#ffffff',crit?16:13,crit);
   if(color)FX.spark(e.x,e.y,color,crit?7:3,110,0.3,crit?4:2.5);
   if(e.hp<=0)killEnemy(e);
@@ -825,7 +838,7 @@ function updateEnemies(p,dt){
   for(let i=G.enemies.length-1;i>=0;i--){
     const e=G.enemies[i];
     if(e.flash>0)e.flash-=dt;
-    let sp=e.spd;if(e.slow>0){e.slow-=dt;sp*=0.5;}
+    let sp=e.spd;if(e.slow>0){e.slow-=dt;sp*=(e.elite||e.boss)?0.85:0.65;} // CC-resist: slow is weaker, elites barely care
     const dx=p.x-e.x,dy=p.y-e.y,m=Math.hypot(dx,dy)||1;
     e.x+=dx/m*sp*dt + e.knock.x*dt;
     e.y+=dy/m*sp*dt + e.knock.y*dt;
@@ -1342,6 +1355,7 @@ const UI={
       ⚔️ 공격은 <b>자동</b>. 가까운 적을 알아서 노린다<br>
       ⭐ 적을 처치해 경험치 보석을 모으면 레벨업<br>
       🃏 레벨업마다 3~4개 중 하나 선택 (같은 무기는 단계 상승)<br>
+      ⌨️ 카드 선택: <b>1~4</b> 숫자키 · <b>↑↓</b>+<b>Enter</b> · <b>R</b> 리롤<br>
       💰 골드로 <b>강화 상점</b>에서 영구 능력 · 새 캐릭터 해금<br>
       🎁 미니보스는 보물상자를 떨군다<br>
       ⏸ 우측 상단 버튼(또는 Space/Esc)으로 일시정지</div>
@@ -1459,6 +1473,7 @@ const UI={
     let cards=choices.map((c,i)=>{
       const pips=c.max>0?`<div class="pips" style="color:${c.color}">${Array.from({length:Math.min(c.max,8)},(_,k)=>`<span class="pip ${k<c.lv?'f':''}"></span>`).join('')}</div>`:'';
       return `<div class="lucard ${rc[c.rar]}" data-i="${i}">
+        <span class="knum">${i+1}</span>
         <div class="ic"><div data-icon="${i}"></div></div>
         <div class="tx">
           <div class="tn">${c.title} <span class="badge">${rar[c.rar]}</span></div>
@@ -1474,6 +1489,7 @@ const UI={
         <button class="btn ghost sm" id="reBtn" ${canRe?'':'disabled style="opacity:.4"'}>🎲 리롤 (${p.reroll})</button>
         <button class="btn ghost sm" id="skBtn">건너뛰기 (+체력·골드)</button>
       </div>
+      <div class="hint kbhint">⌨ 1~4 바로 선택 · ↑↓/W·S + Enter · R 리롤</div>
     </div>`;
     // inject icons
     choices.forEach((c,i)=>{const holder=overlay.querySelector(`[data-icon="${i}"]`);
@@ -1481,7 +1497,9 @@ const UI={
     overlay.querySelectorAll('.lucard').forEach(el=>{el.onclick=()=>chooseUpgrade(+el.dataset.i);});
     document.getElementById('reBtn').onclick=()=>{if(p.reroll>0){rerollChoices();}};
     document.getElementById('skBtn').onclick=()=>skipChoice();
+    G.luSel=0; this.luHighlight();
   },
+  luHighlight(){document.querySelectorAll('.lucard').forEach((el,i)=>el.classList.toggle('kb',i===G.luSel));},
 
   /* ---------- pause ---------- */
   pauseMenu(){
