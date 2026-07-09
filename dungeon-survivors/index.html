@@ -394,9 +394,11 @@ const Input={
       if(e.key===' '||e.key==='Escape')Game.togglePause();
     },{passive:false});
     addEventListener('keyup',e=>{this.keys[e.key.toLowerCase()]=false;});
-    const start=(id,x,y)=>{ if(Game.state!=='playing')return; this.joy.active=true;this.joy.id=id;this.joy.ox=x;this.joy.oy=y;this.joy.x=x;this.joy.y=y;this.joy.dx=0;this.joy.dy=0; };
+    const start=(id,x,y)=>{ if(G.state!=='playing'||this.joy.active)return; this.joy.active=true;this.joy.id=id;this.joy.ox=x;this.joy.oy=y;this.joy.x=x;this.joy.y=y;this.joy.dx=0;this.joy.dy=0; };
     const move=(x,y)=>{ if(!this.joy.active)return; let dx=x-this.joy.ox,dy=y-this.joy.oy;const m=Math.hypot(dx,dy),mr=70;
-      if(m>mr){dx=dx/m*mr;dy=dy/m*mr;} this.joy.x=this.joy.ox+dx;this.joy.y=this.joy.oy+dy;
+      if(m>mr){ // follow-style: base chases the finger, knob rides the rim
+        this.joy.ox=x-dx/m*mr; this.joy.oy=y-dy/m*mr; dx=dx/m*mr; dy=dy/m*mr; }
+      this.joy.x=this.joy.ox+dx;this.joy.y=this.joy.oy+dy;
       const n=Math.hypot(dx,dy);this.joy.dx=n>6?dx/mr:0;this.joy.dy=n>6?dy/mr:0; };
     const end=()=>{ this.joy.active=false;this.joy.dx=0;this.joy.dy=0; };
     cv.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];start(t.identifier,t.clientX,t.clientY);},{passive:false});
@@ -1215,12 +1217,14 @@ function drawFloatingText(){
 }
 function drawJoystick(){
   if(!Input.joy.active)return;
-  const sc=CAM.scale*DPR;
-  // draw in screen space
-  ctx.save();ctx.setTransform(1,0,0,1,0,0);
+  // screen space in CSS px (scale by DPR — touch coords are CSS px)
+  ctx.save();ctx.setTransform(DPR,0,0,DPR,0,0);
   const j=Input.joy;
-  ctx.globalAlpha=0.25;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(j.ox,j.oy,70,0,TAU);ctx.fill();
-  ctx.globalAlpha=0.5;ctx.beginPath();ctx.arc(j.x,j.y,30,0,TAU);ctx.fill();
+  ctx.globalAlpha=0.14;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(j.ox,j.oy,70,0,TAU);ctx.fill();
+  ctx.globalAlpha=0.4;ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(j.ox,j.oy,70,0,TAU);ctx.stroke();
+  const g=ctx.createRadialGradient(j.x,j.y,4,j.x,j.y,26);
+  g.addColorStop(0,'rgba(255,255,255,0.9)');g.addColorStop(1,'rgba(255,255,255,0.22)');
+  ctx.globalAlpha=0.9;ctx.fillStyle=g;ctx.beginPath();ctx.arc(j.x,j.y,26,0,TAU);ctx.fill();
   ctx.globalAlpha=1;ctx.restore();
 }
 
