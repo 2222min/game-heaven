@@ -105,6 +105,7 @@
 <div id="stage">
   <div id="fieldWrap">
     <canvas id="game" width="820" height="840"></canvas>
+    <canvas id="gpu" width="820" height="840" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:none"></canvas>
     <div id="toast"></div>
     <div class="screen" id="startScreen">
       <div class="card fadein">
@@ -199,6 +200,7 @@
         <button id="sp3">▶▶▶ x3</button>
         <button id="pauseBtn">⏸</button>
         <button id="sndBtn">🔊</button>
+        <button id="gfxBtn" title="WebGPU 시네마틱 렌더">✨</button>
       </div>
     </div>
 
@@ -2397,7 +2399,7 @@ function log(html){
 }
 GRADES.forEach(gr=>{
   const s=document.createElement('span');
-  s.style.color=gr.color; s.textContent=`${gr.name} ${Math.round(gr.prob*100)}%`;
+  s.style.color=gr.color; s.textContent=`${gr.name} ${(gr.prob*100).toFixed(gr.prob<.01?1:0)}%`;
   UI.probs.appendChild(s);
 });
 function select(u){ S.sel=u; S.selGroup=u?[u]:[]; refreshCard(); }
@@ -2661,6 +2663,7 @@ function frame(now){
     for(let i=0;i<S.speed;i++) step(dt);
   }
   render();
+  if(typeof GPUFX!=='undefined'&&GPUFX.ok&&GPUFX.enabled) GPUFX.frame(dt);
   updateUI();
   requestAnimationFrame(frame);
 }
@@ -2684,6 +2687,221 @@ window.CHEAT={
   upg:n=>S.upgLv=n||20,
   give:(id,star)=>{ if(S.units.length<UNIT_CAP){ const p=findSpawnSpot(); const u=new Unit(id,star||3,p.x,p.y); S.units.push(u); } },
 };
+
+/* =========================================================================
+   GPUFX — WebGPU 시네마틱 렌더 파이프라인
+   Canvas2D 게임 화면 → GPU 텍스처 → 블룸·컬러그레이드·비네트·그레인·색수차
+   + 컴퓨트 셰이더 파티클(재/불씨 2048개). 미지원 시 자동 폴백.
+   ========================================================================= */
+const GPUFX=(()=>{
+  const W=820,H=840,BW=410,BH=420,N_PART=2048;
+  let device=null, gctx=null, format=null, ok=false, enabled=true, failed=false;
+  let sceneTex, bloomA, bloomB, samp, uComp, uBlurH, uBlurV, uPart, partBuf;
+  let pipeBright, pipeBlur, pipeComp, pipePart, pipePartCS;
+  let bgBright, bgBlurH, bgBlurV, bgComp, bgPart, bgPartCS;
+  const gpuCv=document.getElementById('gpu');
+
+  const VS=`
+struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+  var p = array<vec2f,3>(vec2f(-1.0,-3.0), vec2f(-1.0,1.0), vec2f(3.0,1.0));
+  var o: VSOut;
+  o.pos = vec4f(p[vi], 0.0, 1.0);
+  o.uv = vec2f((p[vi].x+1.0)*0.5, 1.0-(p[vi].y+1.0)*0.5);
+  return o;
+}`;
+  const FS_BRIGHT=VS+`
+@group(0) @binding(0) var sampL: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@fragment fn fs(in: VSOut) -> @location(0) vec4f {
+  let c = textureSample(tex, sampL, in.uv).rgb;
+  let lum = dot(c, vec3f(0.299,0.587,0.114));
+  return vec4f(c * smoothstep(0.48, 0.9, lum), 1.0);
+}`;
+  const FS_BLUR=VS+`
+struct BU { d: vec4f }; // texelX, texelY, dirX, dirY
+@group(0) @binding(0) var sampL: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> bu: BU;
+@fragment fn fs(in: VSOut) -> @location(0) vec4f {
+  let step = vec2f(bu.d.x*bu.d.z, bu.d.y*bu.d.w);
+  var c = textureSample(tex, sampL, in.uv).rgb * 0.227027;
+  c += textureSample(tex, sampL, in.uv + step*1.3846).rgb * 0.3162162;
+  c += textureSample(tex, sampL, in.uv - step*1.3846).rgb * 0.3162162;
+  c += textureSample(tex, sampL, in.uv + step*3.2308).rgb * 0.0702703;
+  c += textureSample(tex, sampL, in.uv - step*3.2308).rgb * 0.0702703;
+  return vec4f(c, 1.0);
+}`;
+  const FS_COMP=VS+`
+struct CU { a: vec4f, b: vec4f }; // a: time, shake, bloom, grain / b: w, h, 0, 0
+@group(0) @binding(0) var sampL: sampler;
+@group(0) @binding(1) var scene: texture_2d<f32>;
+@group(0) @binding(2) var bloom: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> u: CU;
+fn hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1,311.7))) * 43758.5453); }
+@fragment fn fs(in: VSOut) -> @location(0) vec4f {
+  let t = u.a.x; let shake = u.a.y;
+  var uv = in.uv;
+  uv += vec2f(sin(uv.y*70.0+t*32.0), cos(uv.x*70.0+t*29.0)) * shake * 0.0011; // 충격 열 왜곡
+  let d = uv - vec2f(0.5);
+  let ca = 0.0016 + shake*0.0012;                                            // 색수차
+  let r = textureSample(scene, sampL, uv + d*ca).r;
+  let g = textureSample(scene, sampL, uv).g;
+  let b = textureSample(scene, sampL, uv - d*ca).b;
+  var c = vec3f(r,g,b);
+  c += textureSample(bloom, sampL, uv).rgb * u.a.z;                           // 블룸
+  c = c * vec3f(1.045, 1.0, 0.965);                                          // 라이트 웜 그레이드
+  c = mix(c, c*c*(3.0-2.0*c), 0.26);                                         // 필름 S커브
+  let lum = dot(c, vec3f(0.299,0.587,0.114));
+  c = mix(vec3f(lum), c, 1.16);                                              // 채도
+  let v = smoothstep(0.94, 0.34, length(d));
+  c *= mix(0.76, 1.03, v);                                                   // 비네트
+  c += (hash(in.uv*u.b.xy + vec2f(t*61.0, t*47.0)) - 0.5) * u.a.w;           // 그레인
+  return vec4f(c, 1.0);
+}`;
+  const PART_STRUCT=`
+struct P { pos: vec2f, vel: vec2f, life: f32, maxlife: f32, kind: f32, seed: f32 };
+struct PU { a: vec4f }; // dt, time, W, H
+`;
+  const CS_PART=PART_STRUCT+`
+@group(0) @binding(0) var<storage, read_write> parts: array<P>;
+@group(0) @binding(1) var<uniform> pu: PU;
+fn hash1(n: f32) -> f32 { return fract(sin(n)*43758.5453); }
+@compute @workgroup_size(64) fn cs(@builtin(global_invocation_id) id: vec3u) {
+  let i = id.x;
+  if (i >= arrayLength(&parts)) { return; }
+  var p = parts[i];
+  let dt = pu.a.x; let t = pu.a.y; let W = pu.a.z; let H = pu.a.w;
+  p.pos += p.vel * dt;
+  p.pos.x += sin(t*0.8 + p.seed*17.0) * 7.0 * dt;
+  p.life -= dt;
+  if (p.life <= 0.0 || p.pos.y < -24.0 || p.pos.y > H+24.0 || p.pos.x < -24.0 || p.pos.x > W+24.0) {
+    let r1 = hash1(p.seed + t); let r2 = hash1(p.seed*3.1 + t*1.7); let r3 = hash1(p.seed*7.7 + t*0.9);
+    p.kind = select(0.0, 1.0, r3 < 0.18);
+    p.pos.x = r1 * W;
+    if (p.kind > 0.5) { p.pos.y = H + 12.0; p.vel = vec2f((r2-0.5)*10.0, -(20.0+r2*38.0)); }
+    else { p.pos.x = W + 12.0; p.pos.y = r1 * H; p.vel = vec2f(-(14.0+r2*22.0), (r1-0.5)*8.0); }
+    p.maxlife = 5.0 + r2*8.0;
+    p.life = p.maxlife;
+  }
+  parts[i] = p;
+}`;
+  const RS_PART=PART_STRUCT+`
+@group(0) @binding(0) var<storage, read> parts: array<P>;
+@group(0) @binding(1) var<uniform> pu: PU;
+struct VOut { @builtin(position) pos: vec4f, @location(0) k: f32, @location(1) fade: f32, @location(2) quv: vec2f };
+@vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  let p = parts[ii];
+  var corners = array<vec2f,6>(vec2f(-1.0,-1.0),vec2f(1.0,-1.0),vec2f(-1.0,1.0),vec2f(-1.0,1.0),vec2f(1.0,-1.0),vec2f(1.0,1.0));
+  let corner = corners[vi];
+  let size = select(2.4, 3.4, p.kind > 0.5);
+  let world = p.pos + corner * size;
+  let ndc = vec2f(world.x / pu.a.z * 2.0 - 1.0, 1.0 - world.y / pu.a.w * 2.0);
+  var o: VOut;
+  o.pos = vec4f(ndc, 0.0, 1.0);
+  o.k = p.kind;
+  o.fade = clamp(p.life / max(p.maxlife, 0.001), 0.0, 1.0) * min(1.0, (p.maxlife - p.life) * 2.0);
+  o.quv = corner;
+  return o;
+}
+@fragment fn fs(in: VOut) -> @location(0) vec4f {
+  let r = length(in.quv);
+  let a = smoothstep(1.0, 0.15, r) * in.fade;
+  let col = select(vec3f(0.82,0.92,1.0), vec3f(1.0,0.85,0.4), in.k > 0.5);
+  let inten = select(0.16, 0.65, in.k > 0.5);
+  return vec4f(col * a * inten, 0.0);
+}`;
+
+  async function init(){
+    try{
+      if(!navigator.gpu){ failed=true; return false; }
+      const adapter=await navigator.gpu.requestAdapter();
+      if(!adapter){ failed=true; return false; }
+      device=await adapter.requestDevice();
+      device.addEventListener?.('uncapturederror',e=>{ window.__gpuerr=(window.__gpuerr||'')+e.error.message+';'; });
+      format=navigator.gpu.getPreferredCanvasFormat();
+      gctx=gpuCv.getContext('webgpu');
+      gctx.configure({device, format, alphaMode:'opaque'});
+      samp=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
+      sceneTex=device.createTexture({size:[W,H],format:'rgba8unorm',usage:GPUTextureUsage.COPY_DST|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT});
+      bloomA=device.createTexture({size:[BW,BH],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT});
+      bloomB=device.createTexture({size:[BW,BH],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT});
+      const mkPipe=(code,targetFormat,blend)=>device.createRenderPipeline({layout:'auto',
+        vertex:{module:device.createShaderModule({code}),entryPoint:'vs'},
+        fragment:{module:device.createShaderModule({code}),entryPoint:'fs',
+          targets:[Object.assign({format:targetFormat},blend?{blend}:{}) ]},
+        primitive:{topology:'triangle-list'}});
+      pipeBright=mkPipe(FS_BRIGHT,'rgba8unorm');
+      pipeBlur=mkPipe(FS_BLUR,'rgba8unorm');
+      pipeComp=mkPipe(FS_COMP,format);
+      pipePart=mkPipe(RS_PART,format,{color:{srcFactor:'one',dstFactor:'one',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one',operation:'add'}});
+      pipePartCS=device.createComputePipeline({layout:'auto',compute:{module:device.createShaderModule({code:CS_PART}),entryPoint:'cs'}});
+      uComp=device.createBuffer({size:32,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      uBlurH=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      uBlurV=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      uPart=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      device.queue.writeBuffer(uBlurH,0,new Float32Array([1/BW,1/BH,1,0]));
+      device.queue.writeBuffer(uBlurV,0,new Float32Array([1/BW,1/BH,0,1]));
+      /* 파티클 초기화 */
+      const pd=new Float32Array(N_PART*8);
+      for(let i=0;i<N_PART;i++){ const o=i*8;
+        const ember=Math.random()<0.18;
+        pd[o]=Math.random()*W; pd[o+1]=Math.random()*H;
+        pd[o+2]=ember?(Math.random()-0.5)*10:-(14+Math.random()*22);
+        pd[o+3]=ember?-(20+Math.random()*38):(Math.random()-0.5)*8;
+        pd[o+4]=Math.random()*6; pd[o+5]=5+Math.random()*8;
+        pd[o+6]=ember?1:0; pd[o+7]=Math.random()*100; }
+      partBuf=device.createBuffer({size:pd.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+      device.queue.writeBuffer(partBuf,0,pd);
+      /* 바인드 그룹 */
+      bgBright=device.createBindGroup({layout:pipeBright.getBindGroupLayout(0),entries:[
+        {binding:0,resource:samp},{binding:1,resource:sceneTex.createView()}]});
+      bgBlurH=device.createBindGroup({layout:pipeBlur.getBindGroupLayout(0),entries:[
+        {binding:0,resource:samp},{binding:1,resource:bloomA.createView()},{binding:2,resource:{buffer:uBlurH}}]});
+      bgBlurV=device.createBindGroup({layout:pipeBlur.getBindGroupLayout(0),entries:[
+        {binding:0,resource:samp},{binding:1,resource:bloomB.createView()},{binding:2,resource:{buffer:uBlurV}}]});
+      bgComp=device.createBindGroup({layout:pipeComp.getBindGroupLayout(0),entries:[
+        {binding:0,resource:samp},{binding:1,resource:sceneTex.createView()},{binding:2,resource:bloomA.createView()},{binding:3,resource:{buffer:uComp}}]});
+      bgPart=device.createBindGroup({layout:pipePart.getBindGroupLayout(0),entries:[
+        {binding:0,resource:{buffer:partBuf}},{binding:1,resource:{buffer:uPart}}]});
+      bgPartCS=device.createBindGroup({layout:pipePartCS.getBindGroupLayout(0),entries:[
+        {binding:0,resource:{buffer:partBuf}},{binding:1,resource:{buffer:uPart}}]});
+      ok=true; gpuCv.style.display='block';
+      return true;
+    }catch(e){ window.__gpuerr=(window.__gpuerr||'')+String(e&&e.message||e)+';'; failed=true; ok=false; return false; }
+  }
+  function frame(dt){
+    if(!ok||!enabled) return;
+    try{
+      const t=performance.now()/1000;
+      device.queue.copyExternalImageToTexture({source:cv},{texture:sceneTex},[W,H]);
+      device.queue.writeBuffer(uComp,0,new Float32Array([t, S.shake*.12, .8, .034, W, H, 0, 0]));
+      device.queue.writeBuffer(uPart,0,new Float32Array([Math.min(dt,.05), t, W, H]));
+      const enc=device.createCommandEncoder();
+      const cp=enc.beginComputePass();
+      cp.setPipeline(pipePartCS); cp.setBindGroup(0,bgPartCS);
+      cp.dispatchWorkgroups(Math.ceil(N_PART/64)); cp.end();
+      const pass=(pipe,bg,view)=>{ const rp=enc.beginRenderPass({colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
+        rp.setPipeline(pipe); rp.setBindGroup(0,bg); rp.draw(3); rp.end(); };
+      pass(pipeBright,bgBright,bloomA.createView());
+      pass(pipeBlur,bgBlurH,bloomB.createView());
+      pass(pipeBlur,bgBlurV,bloomA.createView());
+      const rp=enc.beginRenderPass({colorAttachments:[{view:gctx.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
+      rp.setPipeline(pipeComp); rp.setBindGroup(0,bgComp); rp.draw(3);
+      rp.setPipeline(pipePart); rp.setBindGroup(0,bgPart); rp.draw(6,N_PART);
+      rp.end();
+      device.queue.submit([enc.finish()]);
+    }catch(e){ window.__gpuerr=(window.__gpuerr||'')+String(e&&e.message||e)+';'; ok=false; gpuCv.style.display='none'; }
+  }
+  function toggle(){ if(!ok&&!failed) return enabled;
+    enabled=!enabled; gpuCv.style.display=(ok&&enabled)?'block':'none'; return enabled; }
+  return {init, frame, toggle, get ok(){return ok}, get enabled(){return enabled}, get failed(){return failed}};
+})();
+$('gfxBtn').onclick=()=>{ const on=GPUFX.toggle(); AudioSys.ui();
+  $('gfxBtn').style.opacity=(GPUFX.ok&&on)?1:.45;
+  toast(GPUFX.ok?(on?'✨ WebGPU 시네마틱 ON':'WebGPU 시네마틱 OFF'):'이 브라우저는 WebGPU 미지원 — 기본 렌더 사용'); };
+GPUFX.init().then(r=>{ if(r){ log('✨ <b>WebGPU 시네마틱 렌더</b> 활성화 (블룸·물보라·금빛 반짝임)'); }
+  else { $('gfxBtn').style.opacity=.45; } });
 
 /* 부트 */
 buildSprites();
