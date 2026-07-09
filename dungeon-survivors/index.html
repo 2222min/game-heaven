@@ -10,12 +10,15 @@
     --com:#8fa3bd; --unc:#5ad19a; --rare:#5aa9ff; --epic:#c58bff; --leg:#ffbf4d;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
-  html,body{height:100%;background:var(--bg);color:var(--ink);
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  html,body{height:100%;background:var(--bg);color:var(--ink);position:fixed;width:100%;
     font-family:"Trebuchet MS","Segoe UI",system-ui,-apple-system,sans-serif;overflow:hidden;overscroll-behavior:none;touch-action:none}
-  #game{position:fixed;inset:0;display:block;background:#07050c;image-rendering:pixelated;image-rendering:crisp-edges}
+  #game{position:fixed;inset:0;display:block;background:#07050c;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none}
   .layer{position:fixed;inset:0;pointer-events:none}
   .center{display:flex;align-items:center;justify-content:center;flex-direction:column}
   .pe{pointer-events:auto}
+  /* mobile: allow taps/scroll but never pinch/double-tap zoom */
+  .btn,.card,.lucard,.chip,#pausebtn,.muteb,.shopitem .buy,textarea{touch-action:manipulation}
 
   /* ---------- HUD ---------- */
   #hud{opacity:0;transition:opacity .3s;font-weight:bold}
@@ -41,7 +44,7 @@
     background:#1a1330cc;box-shadow:inset 0 0 0 1px #ffffff2b,0 3px 6px #0007;display:flex;align-items:center;justify-content:center;font-size:16px}
 
   /* ---------- Overlays ---------- */
-  #overlay{background:radial-gradient(120% 90% at 50% 0%,#1a1030f2,#080510f7);display:none;overflow-y:auto;padding:24px 16px}
+  #overlay{background:radial-gradient(120% 90% at 50% 0%,#1a1030f2,#080510f7);display:none;overflow-y:auto;padding:24px 16px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
   #overlay.on{display:flex}
   .panel{width:min(560px,94vw);display:flex;flex-direction:column;align-items:center;gap:14px}
   .title{font-size:clamp(30px,8vw,54px);font-weight:800;letter-spacing:2px;line-height:1;text-align:center;
@@ -1548,6 +1551,9 @@ function boot(){
   resize();
   testStorage();
   Input.init(canvas);
+  // Kill pinch / double-tap zoom on mobile (iOS ignores user-scalable=no, so guard in JS too)
+  ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
+  document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
   addEventListener('visibilitychange',()=>{if(document.hidden){saveMeta();if(G.state==='playing')Game.togglePause();}});
   addEventListener('beforeunload',saveMeta);
   addEventListener('pagehide',saveMeta);
