@@ -167,14 +167,14 @@ async function refreshStats(){
       el.querySelector('.n').textContent = s.players > 0 ? `지금 ${s.players}명 플레이 중` : 'AI 봇 대기 중 · 첫 입장 찬스';
     }
     document.getElementById('liveTotal').textContent =
-      s.players > 0 ? `꼬물이.io에 ${s.players}명 접속 중 🟢` : '게임 3종 가동 중';
+      s.players > 0 ? `꼬물이.io에 ${s.players}명 접속 중 🟢` : `게임 ${GAMES.length}종 가동 중`;
   } catch (e){
     if (el){
       el.style.display = 'inline-flex';
       el.classList.add('off');
       el.querySelector('.n').textContent = '멀티 서버 오프라인';
     }
-    document.getElementById('liveTotal').textContent = '게임 3종';
+    document.getElementById('liveTotal').textContent = `게임 ${GAMES.length}종`;
   }
 }
 refreshStats();
