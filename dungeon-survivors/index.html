@@ -565,8 +565,8 @@ function startRun(charId){
 /* ============================================================================
    ENEMY SPAWNING & SCALING
    ============================================================================ */
-function difficulty(){ return 1+G.time/60*0.55; } // hp/dmg scale
-function spawnRate(){ return Math.min(0.06, 0.42 - G.time*0.00035); } // seconds between spawns (lower=faster) -> invert below
+// hp/dmg scale — quadratic late-game: fresh runs hit a wall ~5-6min, meta upgrades push the wall further
+function difficulty(){ const m=G.time/60; return 1+m*0.5+m*m*0.09; }
 function enemyBudget(){ return 24+Math.floor(G.time*1.0); }
 
 function spawnEnemy(typeKey,forceX,forceY,elite){
@@ -593,7 +593,7 @@ function spawnBoss(key){
   const a=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.6+80;
   const e={uid:uidc++,type:key,tile:b.tile,tint:b.tint,ta:0.5,
     x:p.x+Math.cos(a)*rad,y:p.y+Math.sin(a)*rad,vx:0,vy:0,r:b.r,spd:b.spd,
-    hp:b.hp*(1+G.time/60*0.25),maxHp:b.hp*(1+G.time/60*0.25),dmg:b.dmg,xp:b.xp,
+    hp:b.hp*(1+G.time/60*0.25),maxHp:b.hp*(1+G.time/60*0.25),dmg:b.dmg*(0.8+G.time/60*0.15),xp:b.xp,
     flash:0,atkCd:0,bob:rand(TAU),flip:false,scale:b.scale,knock:{x:0,y:0},
     elite:true,boss:true,name:b.name,slow:0,hcd:{},goldDrop:key==='demon'?200:randi(20,40),final:key==='demon'};
   G.enemies.push(e);G.bossActive=e;
@@ -1526,6 +1526,8 @@ const UI={
     G.state=win?'victory':'gameover';this.hud(false);this.overlay(true);
     const t=win?'승리!':(quit?'철수':'쓰러졌다…');
     const sub=win?'심연의 마왕을 물리쳤다':(quit?'다음 판을 기약하며':'하지만 골드는 남는다');
+    const upgTotal=Object.values(META.upg).reduce((a,b)=>a+b,0);
+    const shopHint=(!win&&upgTotal<5)?`<div class="hint" style="color:var(--gold);max-width:320px">💡 원래 맨몸으로는 못 깹니다 — 골드로 <b>강화 상점</b>에서 영구히 강해진 뒤 다시 도전하세요. 판을 거듭할수록 더 멀리 갑니다.</div>`:'';
     overlay.innerHTML=`<div class="panel fade">
       <div class="title" style="${win?'':'filter:drop-shadow(0 4px 10px #ff3a3a55);background:linear-gradient(#fff,#ff8a8a 55%,#ff5a5a);-webkit-background-clip:text;background-clip:text;color:transparent'}">${t}</div>
       <div class="subtitle">${sub}</div>
@@ -1541,8 +1543,10 @@ const UI={
         <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800"><span>합계</span><span style="color:#ffcf5c">+${r.total} G</span></div>
       </div>
       <div class="goldpill"><span class="c"></span> 보유 <b>${META.gold}</b></div>
+      ${shopHint}
       <div class="row">
-        <button class="btn gold" id="againBtn">다시 도전 ▶</button>
+        <button class="btn ${shopHint?'':'gold'}" id="againBtn">다시 도전 ▶</button>
+        ${shopHint?'<button class="btn gold" id="shopBtnHot">🛡 강화하러 가기</button>':''}
       </div>
       <div class="row">
         <button class="btn ghost sm" id="shopBtn2">🛡 강화 상점</button>
@@ -1550,6 +1554,7 @@ const UI={
       </div>
     </div>`;
     document.getElementById('againBtn').onclick=()=>this.charSelect();
+    const hot=document.getElementById('shopBtnHot');if(hot)hot.onclick=()=>this.shop();
     document.getElementById('shopBtn2').onclick=()=>this.shop();
     document.getElementById('menuBtn2').onclick=()=>this.title();
   }
