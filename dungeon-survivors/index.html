@@ -566,7 +566,7 @@ function spawnEnemy(typeKey,forceX,forceY,elite){
     uid:uidc++, type:typeKey, tile:base.tile, tint:base.tint, ta:base.ta||0.5,
     x,y,vx:0,vy:0, r:base.r, spd:base.spd*rand(0.9,1.08),
     hp:base.hp*d*(elite?6:1), maxHp:base.hp*d*(elite?6:1),
-    dmg:base.dmg*(0.7+d*0.3)*(elite?1.5:1), xp:base.xp*(elite?8:1),
+    dmg:base.dmg*(0.6+d*0.42)*(elite?1.5:1), xp:base.xp*(elite?8:1),
     flash:0, atkCd:0, bob:rand(TAU), flip:false, scale:(elite?1.7:1)*(base.scale||1),
     knock:{x:0,y:0}, elite:!!elite, boss:false, name:null, slow:0, hcd:{},
     goldDrop:elite?randi(3,6):(Math.random()<0.08?1:0),
@@ -734,7 +734,7 @@ function updatePersistent(p,dt){
       if(w.t>=tick){w.t=0;const r2=rad*rad;
         for(const e of G.enemies){if(dist2(p.x,p.y,e.x,e.y)<=r2+e.r*e.r){const cr=critRoll(p);
           damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color);
-          const m=Math.hypot(e.x-p.x,e.y-p.y)||1;e.knock.x+=(e.x-p.x)/m*90;e.knock.y+=(e.y-p.y)/m*90;}}
+          const m=Math.hypot(e.x-p.x,e.y-p.y)||1;e.knock.x+=(e.x-p.x)/m*55;e.knock.y+=(e.y-p.y)/m*55;}}
       }
       w._rad=rad;
     }
@@ -840,7 +840,7 @@ function updateEnemies(p,dt){
 }
 function hurtPlayer(p,dmg){
   dmg=Math.max(1,dmg-p.armor);
-  p.hp-=dmg;p.invuln=0.35;p.hurtFlash=0.3;
+  p.hp-=dmg;p.invuln=0.15;p.hurtFlash=0.3; // short i-frame: swarms must stay lethal
   FX.text(p.x,p.y-p.r-4,'-'+Math.round(dmg),'#ff6b7a',14);
   G.shake=Math.max(G.shake,4);Sound.hurt();
   if(p.hp<=0)tryDie(p);
