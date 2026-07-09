@@ -646,10 +646,10 @@ let PATH=buildPATH();
    난이도
    ========================================================================= */
 const DIFFS=[
- {key:'easy',  name:'평화로운 변경', desc:'입문 · 몬스터 HP 75% · 한계 84',            hp:.75, cnt:21, limit:84, gold:1, spd:1,    bossHp:1,    finalT:110, color:'#66d97e'},
- {key:'normal',name:'왕국 기사단',   desc:'표준 · 몬스터 HP 100% · 한계 74',           hp:1,   cnt:22, limit:74, gold:0, spd:1.03, bossHp:1,    finalT:96,  color:'#4da3ff'},
- {key:'hard',  name:'마경 원정',     desc:'몬스터 HP 175% · 26마리 · 한계 64',          hp:1.75,cnt:26, limit:64, gold:0, spd:1.1,  bossHp:1.15, finalT:90,  color:'#ffa726'},
- {key:'hell',  name:'심연의 균열',   desc:'몬스터 HP 250% · 28마리 · 한계 54 · 보스 강화', hp:2.5, cnt:28, limit:54, gold:0, spd:1.14, bossHp:1.3,  finalT:86,  color:'#ff5567'},
+ {key:'easy',  name:'평화로운 변경', desc:'입문 · 몬스터 HP 75% · 한계 84',            hp:.75, cnt:21, limit:84, gold:1, spd:1,    bossHp:1,    finalT:143, color:'#66d97e'},
+ {key:'normal',name:'왕국 기사단',   desc:'표준 · 몬스터 HP 100% · 한계 74',           hp:1,   cnt:22, limit:74, gold:0, spd:1.03, bossHp:1,    finalT:125, color:'#4da3ff'},
+ {key:'hard',  name:'마경 원정',     desc:'몬스터 HP 175% · 26마리 · 한계 64',          hp:1.75,cnt:26, limit:64, gold:0, spd:1.1,  bossHp:1.15, finalT:117, color:'#ffa726'},
+ {key:'hell',  name:'심연의 균열',   desc:'몬스터 HP 250% · 28마리 · 한계 54 · 보스 강화', hp:2.5, cnt:28, limit:54, gold:0, spd:1.14, bossHp:1.3,  finalT:112, color:'#ff5567'},
 ];
 /* =========================================================================
    게임 상태
@@ -668,8 +668,8 @@ const ECON={summon:20, upgBase:40, upgGrow:1.15, upgPct:.15, upgMax:40,
 const mobHP=r=>16*Math.pow(1.22,Math.min(r,20))
   *Math.pow(1.15,clamp(r-20,0,20))
   *Math.pow(1.12,Math.max(0,r-40));
-const mobGold=r=>1+Math.floor(r/5);
-const clearBonus=r=>15+Math.floor(r*2);
+const mobGold=r=>2+Math.floor(r/5);
+const clearBonus=r=>22+Math.floor(r*2.5);
 const dmgMult=()=>1+ECON.upgPct*S.upgLv;
 const aspdMult=()=>1+ECON.aspdPct*S.aspdLv;
 
@@ -1278,7 +1278,7 @@ function startRound(r){
     S.spawnQ.push({at:.8,boss:b}); // 보스 라운드는 잡몹 없이 보스만
     log(`☠️ <b style="color:#ff7043">WAVE ${r} — 「${b.name}」 출현!</b>`);
     { const wt=document.getElementById('waveType'); if(wt) wt.textContent='☠ 보스 웨이브'; }
-    const tlimit = b.final ? S.diff.finalT : Math.round(S.diff.finalT*0.40); // 일반 보스 ~35~44초
+    const tlimit = b.final ? S.diff.finalT : Math.round(S.diff.finalT*0.40); // 일반 보스 ~45~57초
     S.finalT=tlimit; S.roundDur=tlimit+3;
     S.fx.push({t:'banner',name:b.name,sub:`제한 ${tlimit}초 — 시간 내 토벌하지 못하면 패배!`,life:2,max:2});
     AudioSys.boss();
