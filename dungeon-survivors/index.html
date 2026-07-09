@@ -44,9 +44,10 @@
     background:#1a1330cc;box-shadow:inset 0 0 0 1px #ffffff2b,0 3px 6px #0007;display:flex;align-items:center;justify-content:center;font-size:16px}
 
   /* ---------- Overlays ---------- */
-  #overlay{background:radial-gradient(120% 90% at 50% 0%,#1a1030f2,#080510f7);display:none;overflow-y:auto;padding:24px 16px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+  #overlay{background:radial-gradient(120% 90% at 50% 0%,#1a1030f2,#080510f7);display:none;overflow-y:auto;padding:24px 16px;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    justify-content:flex-start} /* id beats .center — child margin:auto centers when it fits, scrolls when it overflows */
   #overlay.on{display:flex}
-  .panel{width:min(560px,94vw);display:flex;flex-direction:column;align-items:center;gap:14px}
+  .panel{width:min(560px,94vw);display:flex;flex-direction:column;align-items:center;gap:14px;margin:auto}
   .title{font-size:clamp(30px,8vw,54px);font-weight:800;letter-spacing:2px;line-height:1;text-align:center;
     background:linear-gradient(#fff,#ffcf5c 55%,#ff7a5a);-webkit-background-clip:text;background-clip:text;color:transparent;
     filter:drop-shadow(0 4px 10px #ff8a3a55);text-transform:uppercase}
@@ -81,7 +82,7 @@
   .card .lockicon{position:absolute;top:8px;right:9px;font-size:14px;opacity:.85}
 
   /* levelup cards */
-  #luwrap{width:min(680px,96vw);display:flex;flex-direction:column;gap:12px;align-items:center}
+  #luwrap{width:min(680px,96vw);display:flex;flex-direction:column;gap:12px;align-items:center;margin:auto}
   .lucards{display:flex;flex-direction:column;gap:10px;width:100%}
   .lucard{pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;
     background:linear-gradient(100deg,#211934,#181126);box-shadow:inset 0 0 0 1px #ffffff18,0 5px 12px #0006;transition:transform .07s,box-shadow .07s;position:relative;overflow:hidden}
@@ -711,7 +712,7 @@ function explode(x,y,r,dmg,color,slow,slowT){
   FX.ring(x,y,color,r*0.3,r,0.35);FX.spark(x,y,color,12,180,0.5,4);
   G.shake=Math.max(G.shake,4);Sound.boom();
   const r2=r*r;
-  for(const e of G.enemies){ if(dist2(x,y,e.x,e.y)<=r2+e.r*e.r){
+  for(const e of [...G.enemies]){ if(dist2(x,y,e.x,e.y)<=r2+e.r*e.r){ // copy: kills mutate the list
     damageEnemy(e,dmg,false,{x:e.x-x,y:e.y-y},color); if(slow){e.slow=Math.max(e.slow,slowT||0.6);} } }
 }
 
@@ -864,7 +865,8 @@ function updateProjectiles(dt){
       // curve back toward player after half life
       const back=Math.atan2(p.y-pr.y,p.x-pr.x);
       const outPhase=pr.boomT<pr.life*0.4;
-      if(!outPhase){const cur=Math.atan2(pr.vy,pr.vx);const na=cur+ (angDiff(cur,back))*Math.min(1,dt*3.5);
+      if(!outPhase){if(!pr._returning){pr._returning=true;if(pr.hitSet)pr.hitSet.clear();} // return pass hits again
+        const cur=Math.atan2(pr.vy,pr.vx);const na=cur+ (angDiff(cur,back))*Math.min(1,dt*3.5);
         const sp=Math.hypot(pr.vx,pr.vy);pr.vx=Math.cos(na)*sp;pr.vy=Math.sin(na)*sp;}
       pr.angle=(pr.angle||0)+pr.spin*dt;
     } else if(pr.homing>0){
@@ -927,9 +929,10 @@ function collectPickup(p,k){
   }
 }
 function openChest(p){
-  // grant 1-3 upgrades instantly
+  // grant 1-3 upgrades instantly; maxed build gets gold + full heal instead
   const n=randi(1,3);let got=[];
   for(let i=0;i<n;i++){const opt=rollOneUpgrade(p);if(opt){applyChoice(p,opt);got.push(opt.title);}}
+  if(!got.length){const g=randi(20,40);G.goldRun+=g;p.hp=p.maxHp;got.push('+'+g+'G · 완전 회복');}
   FX.ring(p.x,p.y,'#ffcf5c',10,180,0.6);Sound.levelup();
   UI.toast('🎁 보물상자! '+got.join(', '));
 }
@@ -1265,7 +1268,8 @@ const pausebtn=document.getElementById('pausebtn');
 pausebtn.onclick=()=>Game.togglePause();
 let toastT=null;
 const UI={
-  hud(on){hud.classList.toggle('on',on);pausebtn.style.display=on?'flex':'none';},
+  hud(on){hud.classList.toggle('on',on);pausebtn.style.display=on?'flex':'none';
+    const mb=document.getElementById('muteb');if(mb)mb.style.display=on?'none':'flex';},
   overlay(on){overlay.classList.toggle('on',on);if(!on)overlay.innerHTML='';},
   toast(msg){toastEl.textContent=msg;toastEl.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('on'),1600);},
   updateHud(){
@@ -1375,7 +1379,7 @@ const UI={
   /* ---------- character select ---------- */
   charSelect(){
     G.state='charselect';this.overlay(true);
-    let sel=CHARS.find(c=>META.unlocked[c.id])?.id||'mage';
+    let sel=CHARS.find(c=>META.unlocked[c.id])?.id||'mage', pendingUnlock=null;
     const render=()=>{
       overlay.innerHTML=`<div class="panel fade">
         <h2 class="sec">캐릭터 선택</h2>
@@ -1398,9 +1402,11 @@ const UI={
         else{const cost=document.createElement('div');cost.className='cost';cost.innerHTML=`🔓 ${c.cost}G`;el.appendChild(cost);
           const li=document.createElement('div');li.className='lockicon';li.textContent='🔒';el.appendChild(li);}
         el.onclick=()=>{
-          if(unlocked){sel=c.id;render();}
-          else{ if(META.gold>=c.cost){META.gold-=c.cost;META.unlocked[c.id]=true;saveMeta();sel=c.id;Sound.levelup();UI.toast('🔓 '+c.name+' 해금!');render();}
-            else{Sound.hurt();UI.toast('골드가 부족합니다 ('+c.cost+'G)');} }
+          if(unlocked){sel=c.id;render();return;}
+          if(META.gold<c.cost){Sound.hurt();UI.toast('골드가 부족합니다 ('+c.cost+'G)');return;}
+          if(pendingUnlock!==c.id){ // two-step: first tap = confirm prompt, second = buy
+            pendingUnlock=c.id;Sound.pick();UI.toast('한 번 더 탭하면 「'+c.name+'」 해금 · '+c.cost+'G');return;}
+          META.gold-=c.cost;META.unlocked[c.id]=true;pendingUnlock=null;saveMeta();sel=c.id;Sound.levelup();UI.toast('🔓 '+c.name+' 해금!');render();
         };
         grid.appendChild(el);
       }
@@ -1555,6 +1561,7 @@ function boot(){
   resize();
   testStorage();
   Input.init(canvas);
+  addEventListener('blur',()=>{Input.keys={};Input.joy.active=false;Input.joy.dx=0;Input.joy.dy=0;}); // no stuck keys after alt-tab
   // Kill pinch / double-tap zoom on mobile (iOS ignores user-scalable=no, so guard in JS too)
   ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
   document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
