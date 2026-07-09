@@ -11,7 +11,7 @@
     --g0:#b6a888; --g1:#6fae5a; --g2:#4da3ff; --g3:#e8a726; --g4:#ff5567;
     --danger:#ff5252; --ok:#66d97e;
   }
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   html,body{width:100%;height:100%;overflow:hidden;background:radial-gradient(1200px 800px at 50% 18%, #2a2418 0%, #16130d 60%, #0a0806 100%);
     font-family:"Apple SD Gothic Neo","Pretendard","Noto Sans KR",system-ui,sans-serif;color:var(--txt);user-select:none;-webkit-user-select:none}
   #stage{position:absolute;left:50%;top:50%;width:1240px;height:860px;transform-origin:center center;display:flex;gap:12px;padding:10px}
@@ -2448,6 +2448,13 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 /* 리사이즈 */
+function fitPortraitHeight(){
+  const st=document.getElementById('stage');
+  if(!st.classList.contains('portrait')){ document.body.style.height=''; return; }
+  const sc=Math.min(innerWidth/832, 1.4);
+  // #stage는 position:absolute라 문서높이에 기여하지 않음 → 스케일된 높이만큼 body 높이를 잡아 스크롤 가능케 함
+  document.body.style.height=Math.ceil(st.offsetHeight*sc+14)+'px';
+}
 function resize(){
   const st=document.getElementById('stage');
   const portrait = innerWidth < 940 && innerWidth < innerHeight*1.05;
@@ -2456,17 +2463,23 @@ function resize(){
     const w=832, sc=Math.min(innerWidth/w, 1.4);
     st.style.transformOrigin='top center'; st.style.transform=`scale(${sc})`;
     st.style.left='50%'; st.style.top='0'; st.style.marginLeft=(-w/2)+'px'; st.style.marginTop='0';
-    document.body.style.overflowY='auto';
+    document.documentElement.style.overflowY='auto'; document.body.style.overflowY='auto';
+    fitPortraitHeight();
   }else{
     st.classList.remove('portrait');
     const s=Math.min(innerWidth/1250,innerHeight/870);
     st.style.transformOrigin='center center'; st.style.transform=`scale(${s})`;
     st.style.left=(innerWidth/2)+'px'; st.style.top=(innerHeight/2)+'px';
     st.style.marginLeft='-620px'; st.style.marginTop='-430px';
-    document.body.style.overflowY='hidden';
+    document.documentElement.style.overflowY='hidden'; document.body.style.overflowY='hidden';
+    document.body.style.height='';
   }
 }
 addEventListener('resize',resize);
+// 모바일: 더블탭·핀치 줌 차단
+['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
+// 패널 내용(로그·유닛카드·시너지)이 늘면 포트레이트 스크롤 높이 갱신
+if(window.ResizeObserver){ try{ new ResizeObserver(()=>fitPortraitHeight()).observe(document.getElementById('panel')); }catch(e){} }
 
 /* 최고기록 표시 */
 renderBestLine();
