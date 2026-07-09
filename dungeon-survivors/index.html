@@ -278,27 +278,87 @@ function importSave(code){try{const s=JSON.parse(decodeURIComponent(escape(atob(
    AUDIO — tiny procedural synth (WebAudio), muteable
    ============================================================================ */
 const Sound={
-  ctx:null,master:null,
-  init(){ if(this.ctx)return; try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)();
-    this.master=this.ctx.createGain();this.master.gain.value=META.muted?0:0.32;this.master.connect(this.ctx.destination);}catch(e){} },
-  set(v){ if(this.master)this.master.gain.value=META.muted?0:v; },
-  blip(freq,dur,type='square',vol=0.3,slide=0){ if(!this.ctx||META.muted)return;
-    const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();
-    o.type=type;o.frequency.setValueAtTime(freq,t);
-    if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide),t+dur);
-    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0008,t+dur);
-    o.connect(g);g.connect(this.master);o.start(t);o.stop(t+dur+0.02);
+  ctx:null,master:null,sfxBus:null,musicBus:null,noiseBuf:null,
+  seqTimer:null,seqStep:0,nextT:0,mode:'ambient',
+  init(){ if(this.ctx)return; try{
+    const AC=window.AudioContext||window.webkitAudioContext; this.ctx=new AC();
+    if(this.ctx.state==='suspended')this.ctx.resume();
+    const comp=this.ctx.createDynamicsCompressor();
+    comp.threshold.value=-18;comp.ratio.value=6;comp.attack.value=0.004;comp.release.value=0.18;
+    this.master=this.ctx.createGain();this.master.gain.value=META.muted?0:1;
+    this.sfxBus=this.ctx.createGain();this.sfxBus.gain.value=0.5;
+    this.musicBus=this.ctx.createGain();this.musicBus.gain.value=0;
+    this.sfxBus.connect(this.master);this.musicBus.connect(this.master);
+    this.master.connect(comp);comp.connect(this.ctx.destination);
+    const n=this.ctx.sampleRate;const buf=this.ctx.createBuffer(1,n,n);
+    const d=buf.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+    this.noiseBuf=buf;
+    this.nextT=this.ctx.currentTime+0.1;
+    this.seqTimer=setInterval(()=>this._tickMusic(),90);
+  }catch(e){} },
+  set(){ if(this.master)this.master.gain.value=META.muted?0:1; },
+  _t(){ return this.ctx.currentTime; },
+  tone(o){ if(!this.ctx||META.muted)return; const t=o.at||this._t();
+    const os=this.ctx.createOscillator(),g=this.ctx.createGain();
+    os.type=o.type||'square';os.frequency.setValueAtTime(o.f0,t);
+    if(o.f1)os.frequency.exponentialRampToValueAtTime(Math.max(20,o.f1),t+o.dur);
+    g.gain.setValueAtTime(o.vol,t);g.gain.exponentialRampToValueAtTime(0.0008,t+o.dur);
+    let head=os;
+    if(o.filt){const f=this.ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=o.filt;os.connect(f);head=f;}
+    head.connect(g);g.connect(o.bus||this.sfxBus);
+    os.start(t);os.stop(t+o.dur+0.05);
   },
-  shoot(){this.blip(520,0.08,'square',0.10,-180);},
-  hit(){this.blip(180,0.05,'square',0.06,-60);},
-  pick(){this.blip(880,0.06,'triangle',0.10,220);},
-  hurt(){this.blip(150,0.18,'sawtooth',0.22,-80);},
-  levelup(){[523,659,784,1046].forEach((f,i)=>setTimeout(()=>this.blip(f,0.14,'triangle',0.22),i*70));},
-  boom(){this.blip(90,0.3,'sawtooth',0.28,-40);},
-  coin(){this.blip(1200,0.05,'square',0.08,400);},
-  boss(){[110,98,110,146].forEach((f,i)=>setTimeout(()=>this.blip(f,0.25,'sawtooth',0.25),i*140));},
-  win(){[523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>this.blip(f,0.2,'triangle',0.25),i*120));},
-  die(){[440,330,262,196].forEach((f,i)=>setTimeout(()=>this.blip(f,0.28,'sawtooth',0.22),i*150));},
+  noise(o){ if(!this.ctx||META.muted)return; const t=o.at||this._t();
+    const s=this.ctx.createBufferSource();s.buffer=this.noiseBuf;s.loop=true;
+    const f=this.ctx.createBiquadFilter();f.type=o.type||'lowpass';
+    f.frequency.setValueAtTime(o.f0||1200,t);
+    if(o.f1)f.frequency.exponentialRampToValueAtTime(Math.max(40,o.f1),t+o.dur);
+    f.Q.value=o.q||0.7;
+    const g=this.ctx.createGain();g.gain.setValueAtTime(o.vol,t);g.gain.exponentialRampToValueAtTime(0.0008,t+o.dur);
+    s.connect(f);f.connect(g);g.connect(o.bus||this.sfxBus);
+    s.start(t);s.stop(t+o.dur+0.05);
+  },
+  /* ---- SFX: 노이즈 레이어 + 피치 랜덤으로 반복 피로 방지 ---- */
+  shoot(){ this.tone({type:'square',f0:620+rand(-60,60),f1:260,dur:0.07,vol:0.05,filt:2400}); },
+  hit(){ this.noise({dur:0.06,vol:0.10,f0:1400,f1:250}); this.tone({type:'square',f0:150+rand(-20,20),f1:85,dur:0.06,vol:0.07}); },
+  pick(){ const f=pick([660,742,880,990,1175]); this.tone({type:'sine',f0:f,f1:f*1.35,dur:0.1,vol:0.09}); },
+  coin(){ this.tone({type:'sine',f0:1320,f1:1650,dur:0.07,vol:0.08}); this.tone({type:'sine',f0:1980,dur:0.09,vol:0.05,at:this._t()+0.05}); },
+  hurt(){ this.noise({dur:0.18,vol:0.28,f0:2400,f1:180}); this.tone({type:'sawtooth',f0:220,f1:60,dur:0.22,vol:0.20}); },
+  levelup(){ const t=this._t(); [523,659,784,1046,1568].forEach((f,i)=>this.tone({type:'triangle',f0:f,dur:0.16,vol:0.16,at:t+i*0.07}));
+    this.noise({dur:0.5,vol:0.05,f0:5200,f1:8000,at:t+0.1,type:'highpass'}); },
+  boom(){ this.tone({type:'sine',f0:130,f1:34,dur:0.4,vol:0.42}); this.noise({dur:0.34,vol:0.24,f0:900,f1:70}); },
+  boss(){ const t=this._t(); [0,0.16,0.32,0.5].forEach((d,i)=>this.tone({type:'sawtooth',f0:82-i*8,f1:41,dur:0.3,vol:0.2,at:t+d,filt:600}));
+    this.noise({dur:0.9,vol:0.14,f0:300,f1:60}); },
+  win(){ const t=this._t(); [523,659,784,1046,1318,1568].forEach((f,i)=>this.tone({type:'triangle',f0:f,dur:0.22,vol:0.18,at:t+i*0.11})); },
+  die(){ const t=this._t(); [392,311,262,196,131].forEach((f,i)=>this.tone({type:'sawtooth',f0:f,f1:f*0.9,dur:0.3,vol:0.16,at:t+i*0.14,filt:900})); },
+  /* ---- BGM: 32스텝 시퀀서 — 평상시 다크 앰비언트, 보스전 배틀 ---- */
+  _tickMusic(){ if(!this.ctx)return;
+    const st=G.state;
+    const target=META.muted?0:(st==='playing'?0.17:(st==='levelup'||st==='paused'?0.07:0));
+    this.musicBus.gain.setTargetAtTime(target,this._t(),0.5);
+    const mode=(G.bossActive&&st==='playing')?'battle':'ambient';
+    if(mode!==this.mode){this.mode=mode;this.seqStep=0;}
+    if(this.nextT<this._t()-0.4)this.nextT=this._t()+0.05; // 탭 복귀 시 재동기화
+    if(target<=0&&this.musicBus.gain.value<0.005)return;   // 무음이면 스케줄 스킵
+    const spb=this.mode==='battle'?0.135:0.22;
+    while(this.nextT<this._t()+0.28){ this._step(this.seqStep,this.mode,this.nextT); this.nextT+=spb; this.seqStep=(this.seqStep+1)%32; }
+  },
+  _step(s,mode,t){
+    const B=this.musicBus;
+    if(mode==='ambient'){ // Am 드론 + 성긴 펜타토닉 아르페지오
+      if(s%8===0){ const root=[55,55,65.4,49][(s/8)|0];
+        this.tone({type:'sawtooth',f0:root,dur:1.7,vol:0.16,at:t,bus:B,filt:220});
+        this.tone({type:'sawtooth',f0:root*1.5,dur:1.7,vol:0.07,at:t,bus:B,filt:220}); }
+      if(s%4===2&&Math.random()<0.4){ this.tone({type:'triangle',f0:pick([220,262,294,330,392,440]),dur:0.6,vol:0.05,at:t,bus:B}); }
+      if(s===16)this.noise({dur:2.5,vol:0.012,f0:2000,f1:400,at:t,bus:B});
+    } else { // 배틀: 킥+햇+베이스 리프
+      if(s%4===0)this.tone({type:'sine',f0:140,f1:38,dur:0.13,vol:0.30,at:t,bus:B});
+      if(s%4===2)this.noise({dur:0.035,vol:0.07,f0:6000,at:t,bus:B,type:'highpass'});
+      const riff=[110,0,110,131,0,110,0,98, 110,0,110,147,0,131,0,123, 110,0,110,131,0,110,0,98, 165,0,147,0,131,0,123,0];
+      if(riff[s])this.tone({type:'sawtooth',f0:riff[s],dur:0.12,vol:0.15,at:t,bus:B,filt:900});
+      if(s===12||s===28)this.tone({type:'square',f0:440,f1:415,dur:0.2,vol:0.05,at:t,bus:B,filt:1600});
+    }
+  },
 };
 
 /* ============================================================================
