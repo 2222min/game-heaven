@@ -40,6 +40,9 @@
     display:flex;align-items:center;justify-content:center;position:relative}
   .chip canvas{width:26px;height:26px;image-rendering:pixelated}
   .chip .lv{position:absolute;right:-3px;bottom:-4px;font-size:10px;background:#2a1f52;border-radius:6px;padding:0 4px;box-shadow:0 0 0 1px #ffffff33}
+  #combo{position:absolute;top:calc(env(safe-area-inset-top,0px) + 100px);left:0;right:0;text-align:center;font-weight:800;
+    color:#ffcf5c;text-shadow:0 0 14px #ff8a3a99,0 2px 3px #000;pointer-events:none;opacity:0;transition:opacity .25s;font-size:18px}
+  #combo.on{opacity:1}
   #pausebtn{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;width:40px;height:40px;border-radius:10px;
     background:#1a1330cc;box-shadow:inset 0 0 0 1px #ffffff2b,0 3px 6px #0007;display:flex;align-items:center;justify-content:center;font-size:16px}
 
@@ -152,6 +155,7 @@
     <div class="hpwrap"><div class="hpbar" id="hHp"></div><div class="hptext" id="hHpTxt">100/100</div></div>
   </div>
   <div class="wchips" id="hWeapons"></div>
+  <div id="combo"></div>
 </div>
 <div id="pausebtn" class="pe">⏸</div>
 
@@ -264,7 +268,7 @@ function spriteIconCanvas(tile,size=40,tint,amt){
    SAVE (meta progression)
    ============================================================================ */
 const SAVE_KEY='dungeonSurvivors_v1';
-const DEFAULT_SAVE={gold:0,upg:{},unlocked:{mage:true},best:{time:0,kills:0},muted:false,tut:false};
+const DEFAULT_SAVE={gold:0,upg:{},unlocked:{mage:true},best:{time:0,kills:0},muted:false,tut:false,ach:{},nick:'',scores:[]};
 let META=loadSave();
 let STORAGE_OK=true;
 function loadSave(){try{const s=JSON.parse(localStorage.getItem(SAVE_KEY));if(s&&s.upg)return Object.assign({},DEFAULT_SAVE,s);}catch(e){}return JSON.parse(JSON.stringify(DEFAULT_SAVE));}
@@ -366,17 +370,23 @@ const Sound={
    ============================================================================ */
 const CHARS=[
   {id:'mage',  tile:T.mage,  name:'대마법사',  cost:0,    weapon:'bolt',
-   hp:90, dmg:1.15, spd:1.0, blurb:'매직 미사일로 적을 관통. 마법 특화, 체력은 낮음.'},
+   hp:90, dmg:1.15, spd:1.0, blurb:'매직 미사일로 적을 관통. 마법 특화, 체력은 낮음.',
+   trait:'비전 지능 — 경험치 +10%'},
   {id:'knight',tile:T.knight,name:'수호기사',  cost:400,  weapon:'whirl',
-   hp:150,dmg:1.0, spd:0.9, armor:2, blurb:'회전 검을 두르는 탱커. 높은 체력·방어.'},
+   hp:150,dmg:1.0, spd:0.9, armor:2, blurb:'회전 검을 두르는 탱커. 높은 체력·방어.',
+   trait:'가시 갑옷 — 접촉 피해의 50% 반사'},
   {id:'ranger',tile:T.ranger,name:'추적자',    cost:600,  weapon:'arrow',
-   hp:100,dmg:1.05,spd:1.18,proj:1, blurb:'빠른 발과 관통 화살. 투사체 +1.'},
+   hp:100,dmg:1.05,spd:1.18,proj:1, blurb:'빠른 발과 관통 화살. 투사체 +1.',
+   trait:'사냥꾼의 직감 — 획득 반경 +25%'},
   {id:'barb',  tile:T.barb,  name:'광전사',    cost:800,  weapon:'axe',
-   hp:130,dmg:1.25,spd:1.0, blurb:'투척 도끼로 광역 강타. 높은 공격력.'},
+   hp:130,dmg:1.25,spd:1.0, blurb:'투척 도끼로 광역 강타. 높은 공격력.',
+   trait:'피의 격노 — 체력 50% 이하일 때 공격력 +25%'},
   {id:'sorc',  tile:T.sorc,  name:'서리마녀',  cost:1200, weapon:'nova',
-   hp:80, dmg:1.1, spd:1.05,area:1.2, blurb:'서리 폭발로 광역 슬로우. 넓은 범위, 유리대포.'},
+   hp:80, dmg:1.1, spd:1.05,area:1.2, blurb:'서리 폭발로 광역 슬로우. 넓은 범위, 유리대포.',
+   trait:'서리 갑옷 — 피격 시 주변 적 둔화'},
   {id:'rogue', tile:T.rogue, name:'그림자 도적',cost:1600,weapon:'dagger',
-   hp:95, dmg:1.05,spd:1.12,crit:0.15, blurb:'단검 난사와 높은 치명타. 속도·크리 특화.'},
+   hp:95, dmg:1.05,spd:1.12,crit:0.15, blurb:'단검 난사와 높은 치명타. 속도·크리 특화.',
+   trait:'그림자 회피 — 15% 확률로 피해 무시'},
 ];
 const CHAR=id=>CHARS.find(c=>c.id===id);
 
@@ -409,6 +419,27 @@ const WEAPONS={
     desc:lv=>'돌아오는 부메랑 · 다중 관통',dmg:arr(12,3.6),cd:arr(1.5,-0.06),},
 };
 const MAX_WEAPONS=6;
+
+/* ---- 무기 진화: 만렙 + 페어 패시브 보유 → 보스 상자에서 각성 ---- */
+const EVOS={
+  bolt:{pass:'cool',name:'아케인 폭풍',desc:'탄환 2배 · 강유도 · 피해 2배'},
+  whirl:{pass:'might',name:'검의 태풍',desc:'검 수 2배 · 피해 2배'},
+  axe:{pass:'vit',name:'파멸의 도끼',desc:'거대 도끼 · 피해 2배'},
+  arrow:{pass:'proj',name:'폭풍 화살',desc:'화살 +2 · 관통 +3 · 피해 2배'},
+  nova:{pass:'area',name:'절대영도',desc:'범위 1.5배 · 둔화 연장 · 피해 2배'},
+  fire:{pass:'might',name:'지옥불',desc:'폭발 반경 1.6배 · 피해 2배'},
+  bolt2:{pass:'luck',name:'천벌',desc:'연쇄 2배 · 피해 2배'},
+  aura:{pass:'regen',name:'신성 재판',desc:'범위 1.4배 · 피해 2배'},
+  dagger:{pass:'swift',name:'그림자 칼날',desc:'단검 2배 · 피해 2배'},
+  boom:{pass:'area',name:'태풍 부메랑',desc:'거대 부메랑 · 피해 2배'},
+};
+function evoCandidate(p){
+  for(const w of p.weapons){ if(w.evo)continue; const ev=EVOS[w.id];
+    if(ev && w.lv>=WEAPONS[w.id].max && (p.passives[ev.pass]||0)>0) return w; }
+  return null;
+}
+// 광전사 특성(피의 격노) 포함 실효 공격 배율
+function dmgMulOf(p){ return p.dmgMul*((p.char.id==='barb'&&p.hp<p.maxHp*0.5)?1.25:1); }
 
 const PASSIVES={
   vit:{name:'생명력',icon:T.potR,color:'#ff6b7a',max:5,cat:'p',desc:'최대 체력 +20',apply:p=>p.maxHp+=20},
@@ -541,6 +572,7 @@ const G={
   player:null, enemies:[], projs:[], gems:[], pickups:[], orbitals:[],
   spawnT:0, difT:0, bossQ:[], bossActive:null, wonBoss:false, elapsedReal:0,
   selChar:'mage', pendingLevels:0, luChoices:null, run:0,
+  dmgStats:{}, combo:0, comboT:0, comboBest:0, hitstop:0, eventT:0,
 };
 
 /* ---------------- Player ---------------- */
@@ -564,8 +596,8 @@ function makePlayer(charId){
   p.spdMul*=(1+0.06*up('spd'));
   p.cdMul*=Math.pow(0.95,up('cd'));
   p.projAdd+=up('proj');
-  p.xpMul=1+0.10*up('xp');
-  p.pickup*=(1+0.15*up('mag'));
+  p.xpMul=(1+0.10*up('xp'))*(c.id==='mage'?1.1:1);      // 대마법사: 비전 지능
+  p.pickup*=(1+0.15*up('mag'))*(c.id==='ranger'?1.25:1); // 추적자: 사냥꾼의 직감
   p.armor+=up('armor');
   p.crit+=0.05*up('luck');
   p.goldMul=1+0.10*up('gold');
@@ -594,7 +626,7 @@ function recomputeStats(p){
   p.cdMul=Math.pow(0.95,up('cd'));
   p.areaMul=(c.area||1); if(!c.area)p.areaMul=1;
   p.projAdd=(c.proj||0)+up('proj');
-  p.pickup=78*(1+0.15*up('mag'));
+  p.pickup=78*(1+0.15*up('mag'))*(c.id==='ranger'?1.25:1);
   p.armor=(c.armor||0)+up('armor');
   p.crit=(c.crit||0)+0.05*up('luck');
   p.regen=0;
@@ -612,6 +644,7 @@ function startRun(charId){
   G.enemies.length=0;G.projs.length=0;G.gems.length=0;G.pickups.length=0;G.orbitals.length=0;
   FX.parts.length=0;FX.texts.length=0;
   G.spawnT=0;G.difT=0;G.bossActive=null;G.wonBoss=false;G.elapsedReal=0;G.run++;
+  G.dmgStats={};G.combo=0;G.comboT=0;G.comboBest=0;G.hitstop=0;G.eventT=rand(60,85);
   G.player=makePlayer(charId);
   recomputeStats(G.player); G.player.hp=G.player.maxHp;
   G.cam.x=0;G.cam.y=0;G.shake=0;
@@ -644,9 +677,36 @@ function spawnEnemy(typeKey,forceX,forceY,elite){
     flash:0, atkCd:0, bob:rand(TAU), flip:false, scale:(elite?1.7:1)*(base.scale||1),
     knock:{x:0,y:0}, elite:!!elite, boss:false, name:null, slow:0, hcd:{},
     goldDrop:elite?randi(3,6):(Math.random()<0.08?1:0),
+    affix:null, flee:false, ttl:0,
   };
+  if(elite){ // 엘리트 랜덤 어픽스
+    e.affix=pick(['swift','split','burst',null]);
+    if(e.affix==='swift'){e.spd*=1.45;}
+    else if(e.affix==='burst'){e.tint='#ff5a5a';e.ta=0.5;}
+  }
   G.enemies.push(e);
   return e;
+}
+// 이벤트: 보물 고블린 — 도망다니는 골드 주머니
+function spawnGoblin(){
+  const p=G.player,a=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.45;
+  const d=difficulty();
+  const e={uid:uidc++,type:'goblin',tile:T.mimic,tint:'#ffd45c',ta:0.55,
+    x:p.x+Math.cos(a)*rad,y:p.y+Math.sin(a)*rad,vx:0,vy:0,r:14,spd:118,
+    hp:26*d,maxHp:26*d,dmg:0,xp:5,flash:0,atkCd:99,bob:rand(TAU),flip:false,scale:1.1,
+    knock:{x:0,y:0},elite:false,boss:false,name:null,slow:0,hcd:{},goldDrop:randi(15,25),
+    affix:null,flee:true,ttl:12};
+  G.enemies.push(e);
+  UI.toast('💰 보물 고블린 출현! 놓치기 전에 잡아라!');Sound.coin();
+  return e;
+}
+// 이벤트: 대군 돌격 — 한 방향에서 몰려오는 무리
+function spawnHorde(){
+  const p=G.player,a0=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.7;
+  const pool=availableEnemies();const n=Math.min(44,26+Math.floor(G.time/60)*2);
+  for(let i=0;i<n;i++){const a=a0+rand(-0.5,0.5);
+    spawnEnemy(pick(pool),p.x+Math.cos(a)*(rad+rand(0,160)),p.y+Math.sin(a)*(rad+rand(0,160)));}
+  UI.toast('🦇 대군 돌격! 한쪽에서 몰려온다!');Sound.boss();
 }
 function spawnBoss(key){
   const b=BOSSES[key],p=G.player,d=difficulty();
@@ -682,7 +742,12 @@ function updateSpawns(dt){
   }
   // elite occasionally
   G.difT-=dt;
-  if(G.difT<=0){G.difT=rand(22,34); if(G.time>50)spawnEnemy(pick(availableEnemies()),undefined,undefined,true);}
+  if(G.difT<=0){G.difT=rand(22,34); if(G.time>50){const el=spawnEnemy(pick(availableEnemies()),undefined,undefined,true);
+    const an={swift:'질주',split:'분열',burst:'폭발'}[el.affix];if(an)UI.toast('⚔ 정예 출현 — '+an+' 특성!');}}
+  // 이벤트 웨이브
+  G.eventT-=dt;
+  if(G.eventT<=0){ G.eventT=rand(75,110);
+    if(G.time>60){ if(Math.random()<0.55)spawnGoblin(); else spawnHorde(); } }
 }
 function availableEnemies(){
   const t=G.time,list=['bat'];
@@ -708,67 +773,68 @@ function wStat(def,key,lv){return def[key]?def[key][Math.min(lv-1,def[key].lengt
 
 function fireWeapon(p,w){
   const def=WEAPONS[w.id],lv=w.lv;
-  const dmgBase=wStat(def,'dmg',lv)*p.dmgMul;
+  const dmgBase=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);
   const area=p.areaMul;
+  const src=w.id;
   switch(w.id){
     case 'bolt':{
-      let count=1+(lv>=3?1:0)+(lv>=6?1:0)+p.projAdd;
-      const pierce=(lv>=4?1:0)+(lv>=7?1:0);
+      let count=(1+(lv>=3?1:0)+(lv>=6?1:0)+p.projAdd)*(w.evo?2:1);
+      const pierce=(lv>=4?1:0)+(lv>=7?1:0)+(w.evo?2:0);
       const targets=[];let t=nearestEnemy(p.x,p.y);
       for(let i=0;i<count;i++){
         const tgt=nearestEnemyExcluding(p.x,p.y,targets)||t;if(tgt)targets.push(tgt);
         let ang; if(tgt)ang=Math.atan2(tgt.y-p.y,tgt.x-p.x);else ang=Math.atan2(p.face.y,p.face.x)+rand(-0.3,0.3);
         const cr=critRoll(p);
         spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*420,vy:Math.sin(ang)*420,dmg:dmgBase*(cr?2:1),r:8*area,pierce,
-          color:def.color,life:1.4,homing:tgt?3:0,trail:1,crit:cr,scale:area,knock:40});
+          color:def.color,life:1.4,homing:tgt?(w.evo?7:3):0,trail:1,crit:cr,scale:area,knock:40,src});
       }
       Sound.shoot();break;}
     case 'arrow':{
-      let count=1+(lv>=4?1:0)+(lv>=7?1:0)+p.projAdd;
-      const pierce=2+(lv>=3?1:0)+(lv>=6?2:0);
+      let count=1+(lv>=4?1:0)+(lv>=7?1:0)+p.projAdd+(w.evo?2:0);
+      const pierce=2+(lv>=3?1:0)+(lv>=6?2:0)+(w.evo?3:0);
       const t=nearestEnemy(p.x,p.y);let base=t?Math.atan2(t.y-p.y,t.x-p.x):Math.atan2(p.face.y,p.face.x);
       const spread=count>1?0.22:0;
       for(let i=0;i<count;i++){const ang=base+(i-(count-1)/2)*spread;const cr=critRoll(p);
         spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*560,vy:Math.sin(ang)*560,dmg:dmgBase*(cr?2:1),r:7*area,pierce,
-          color:def.color,life:1.1,tile:T.sword2,angle:ang,crit:cr,scale:area,knock:70});}
+          color:def.color,life:1.1,tile:T.sword2,angle:ang,crit:cr,scale:area,knock:70,src});}
       Sound.shoot();break;}
     case 'axe':{
       let count=1+Math.floor(lv/2)+p.projAdd;
       for(let i=0;i<count;i++){const dir=(i%2?1:-1)*rand(60,150);const cr=critRoll(p);
-        spawnProj({x:p.x,y:p.y,vx:dir,vy:-rand(300,420),dmg:dmgBase*(cr?2:1),r:16*area,pierce:999,color:def.color,
-          life:1.6,tile:T.axe,spin:14,grav:620,crit:cr,scale:1.1*area,knock:90,glow:false});}
+        spawnProj({x:p.x,y:p.y,vx:dir,vy:-rand(300,420),dmg:dmgBase*(cr?2:1),r:(w.evo?26:16)*area,pierce:999,color:def.color,
+          life:1.6,tile:T.axe,spin:14,grav:620,crit:cr,scale:(w.evo?1.9:1.1)*area,knock:90,glow:false,src});}
       break;}
     case 'dagger':{
-      let count=3+Math.floor(lv/2)+p.projAdd;
-      const pierce=(lv>=4?1:0)+(lv>=7?1:0);
+      let count=(3+Math.floor(lv/2)+p.projAdd)*(w.evo?2:1);
+      const pierce=(lv>=4?1:0)+(lv>=7?1:0)+(w.evo?1:0);
       const t=nearestEnemy(p.x,p.y);let base=t?Math.atan2(t.y-p.y,t.x-p.x):Math.atan2(p.face.y,p.face.x);
       const spread=0.16;
       for(let i=0;i<count;i++){const ang=base+(i-(count-1)/2)*spread;const cr=critRoll(p);
         spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*520,vy:Math.sin(ang)*520,dmg:dmgBase*(cr?2:1),r:7*area,pierce,
-          color:def.color,life:0.8,tile:T.dagger,angle:ang,crit:cr,scale:0.9*area,knock:45});}
+          color:def.color,life:0.8,tile:T.dagger,angle:ang,crit:cr,scale:0.9*area,knock:45,src});}
       Sound.shoot();break;}
     case 'fire':{
       let count=1+(lv>=5?1:0)+Math.floor(p.projAdd/2);
       const t=nearestEnemy(p.x,p.y);let base=t?Math.atan2(t.y-p.y,t.x-p.x):Math.atan2(p.face.y,p.face.x);
       for(let i=0;i<count;i++){const ang=base+(count>1?(i-(count-1)/2)*0.3:0);const cr=critRoll(p);
         spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*260,vy:Math.sin(ang)*260,dmg:dmgBase*(cr?2:1),r:11*area,pierce:0,
-          color:def.color,life:2.2,tile:T.staffRed,spin:6,crit:cr,scale:area,knock:60,trail:2,
-          onHit:(px,py)=>explode(px,py,(48+lv*4)*area,dmgBase*0.6,def.color)});}
+          color:def.color,life:2.2,tile:T.staffRed,spin:6,crit:cr,scale:area,knock:60,trail:2,src,
+          onHit:(px,py)=>explode(px,py,(48+lv*4)*area*(w.evo?1.6:1),dmgBase*0.6,def.color,false,0,src)});}
       break;}
     case 'bolt2':{
-      let targets=2+lv+p.projAdd; const chainR=(120+lv*8);
+      let targets=(2+lv+p.projAdd)*(w.evo?2:1); const chainR=(120+lv*8)*(w.evo?1.3:1);
       let from=p;let hit=new Set();let prev={x:p.x,y:p.y};
       for(let i=0;i<targets;i++){
         const e=nearestEnemyExcludingSet(prev.x,prev.y,hit,chainR);if(!e)break;hit.add(e);
         const cr=critRoll(p);const dmg=dmgBase*(cr?2:1)*(1-i*0.06);
-        damageEnemy(e,dmg,cr,{x:(e.x-prev.x),y:(e.y-prev.y)},'#e08bff');
+        damageEnemy(e,dmg,cr,{x:(e.x-prev.x),y:(e.y-prev.y)},'#e08bff',src);
         FX.spark(e.x,e.y,def.color,5,120,0.3,3);
         lightningBolt(prev.x,prev.y,e.x,e.y,def.color);
         prev={x:e.x,y:e.y};
       }
       Sound.hit();break;}
     case 'nova':{
-      const r=(70+lv*10)*area; explode(p.x,p.y,r,dmgBase,def.color,true,0.5+lv*0.05);
+      const r=(70+lv*10)*area*(w.evo?1.5:1); explode(p.x,p.y,r,dmgBase,def.color,true,(0.5+lv*0.05)*(w.evo?2:1),src);
       FX.ring(p.x,p.y,def.color,10,r,0.5); G.shake=Math.max(G.shake,3);break;}
   }
 }
@@ -781,33 +847,33 @@ function lightningBolt(x1,y1,x2,y2,color){
     FX.parts.push({x:px,y:py,vx:0,vy:0,life:0.18,max:0.18,color,size:2.5,g:0,glow:true,drag:1,line:{x:nx,y:ny}});px=nx;py=ny;}
 }
 
-function explode(x,y,r,dmg,color,slow,slowT){
+function explode(x,y,r,dmg,color,slow,slowT,src){
   FX.ring(x,y,color,r*0.3,r,0.35);FX.spark(x,y,color,12,180,0.5,4);
   G.shake=Math.max(G.shake,4);Sound.boom();
   const r2=r*r;
   for(const e of [...G.enemies]){ if(dist2(x,y,e.x,e.y)<=r2+e.r*e.r){ // copy: kills mutate the list
-    damageEnemy(e,dmg,false,{x:e.x-x,y:e.y-y},color); if(slow){e.slow=Math.max(e.slow,slowT||0.6);} } }
+    damageEnemy(e,dmg,false,{x:e.x-x,y:e.y-y},color,src); if(slow){e.slow=Math.max(e.slow,slowT||0.6);} } }
 }
 
 /* persistent weapons: whirl blades + aura */
 function updatePersistent(p,dt){
   for(const w of p.weapons){
     if(w.id==='whirl'){
-      const def=WEAPONS.whirl,lv=w.lv;const cnt=1+Math.floor((lv+1)/2)+Math.floor(p.projAdd/2);
-      const rad=(46+lv*3)*p.areaMul, speed=2.6;w.t+=dt*speed;
-      const dmg=wStat(def,'dmg',lv)*p.dmgMul;const br=14*p.areaMul;
+      const def=WEAPONS.whirl,lv=w.lv;const cnt=(1+Math.floor((lv+1)/2)+Math.floor(p.projAdd/2))*(w.evo?2:1);
+      const rad=(46+lv*3)*p.areaMul*(w.evo?1.2:1), speed=2.6;w.t+=dt*speed;
+      const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);const br=14*p.areaMul;
       for(let i=0;i<cnt;i++){const a=w.t+i/cnt*TAU;const bx=p.x+Math.cos(a)*rad,by=p.y+Math.sin(a)*rad;
         w._bx=bx;w._by=by;
         for(const e of G.enemies){ if(dist2(bx,by,e.x,e.y)<(br+e.r)*(br+e.r)){
-          if(enemyHit(e,'whirl'+i,0.35)){const cr=critRoll(p);damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color);} } }
+          if(enemyHit(e,'whirl'+i,0.35)){const cr=critRoll(p);damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color,'whirl');} } }
       }
     }
     else if(w.id==='aura'){
-      const def=WEAPONS.aura,lv=w.lv;const rad=(52+lv*8)*p.areaMul;const dmg=wStat(def,'dmg',lv)*p.dmgMul;
+      const def=WEAPONS.aura,lv=w.lv;const rad=(52+lv*8)*p.areaMul*(w.evo?1.4:1);const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);
       w.t+=dt;const tick=Math.max(0.18,0.4-lv*0.02);
       if(w.t>=tick){w.t=0;const r2=rad*rad;
         for(const e of G.enemies){if(dist2(p.x,p.y,e.x,e.y)<=r2+e.r*e.r){const cr=critRoll(p);
-          damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color);
+          damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-p.x,y:e.y-p.y},def.color,'aura');
           const m=Math.hypot(e.x-p.x,e.y-p.y)||1;const kb=55*(e.boss?0.12:e.elite?0.35:1)/(1+G.time/360);e.knock.x+=(e.x-p.x)/m*kb;e.knock.y+=(e.y-p.y)/m*kb;}}
       }
       w._rad=rad;
@@ -822,9 +888,10 @@ function enemyHit(e,key,cd){const t=e.hcd[key]||0;if(G.time>=t){e.hcd[key]=G.tim
 /* ============================================================================
    DAMAGE
    ============================================================================ */
-function damageEnemy(e,dmg,crit,dir,color){
+function damageEnemy(e,dmg,crit,dir,color,src){
   dmg=Math.max(1,Math.round(dmg));
   e.hp-=dmg;e.flash=0.12;
+  if(src)G.dmgStats[src]=(G.dmgStats[src]||0)+dmg;
   if(dir){const m=Math.hypot(dir.x,dir.y)||1;const k=(e.boss?6:(e.elite?16:34))/(1+G.time/360);e.knock.x+=dir.x/m*k;e.knock.y+=dir.y/m*k;} // knockback resist grows over time
   FX.text(e.x,e.y-e.r,String(dmg),crit?'#ffd45c':'#ffffff',crit?16:13,crit);
   if(color)FX.spark(e.x,e.y,color,crit?7:3,110,0.3,crit?4:2.5);
@@ -833,20 +900,33 @@ function damageEnemy(e,dmg,crit,dir,color){
 function killEnemy(e){
   const idx=G.enemies.indexOf(e);if(idx<0)return;
   FX.blood(e.x,e.y,e.tint||'#ff5a6e',e.boss?24:(e.elite?12:6));
-  if(e.elite){FX.ring(e.x,e.y,e.tint||'#ffcf5c',6,e.r*2.5,0.4);G.shake=Math.max(G.shake,e.boss?9:4);}
+  if(e.elite){FX.ring(e.x,e.y,e.tint||'#ffcf5c',6,e.r*2.5,0.4);G.shake=Math.max(G.shake,e.boss?9:4);
+    G.hitstop=Math.max(G.hitstop,e.boss?0.11:0.045);} // 손맛: 히트스톱
+  // 어픽스: 분열 — 소형 4마리로 쪼개짐
+  if(e.affix==='split'&&!e.boss){for(let i=0;i<4;i++){const s=spawnEnemy(e.type,e.x+rand(-14,14),e.y+rand(-14,14));
+    s.scale*=0.65;s.r*=0.7;s.hp=s.maxHp=s.maxHp*0.22;s.xp=1;s.goldDrop=0;}}
+  // 어픽스: 폭발 — 시체 폭발, 가까우면 아프다
+  if(e.affix==='burst'){FX.ring(e.x,e.y,'#ff5a5a',8,95,0.4);Sound.boom();
+    const p=G.player;if(dist2(p.x,p.y,e.x,e.y)<95*95&&p.invuln<=0)hurtPlayer(p,e.dmg*1.2);}
   // drops
   dropGems(e.x,e.y,e.xp);
   if(e.goldDrop>0)for(let i=0;i<e.goldDrop;i++)G.pickups.push(makePickup(e.x+rand(-10,10),e.y+rand(-10,10),'gold'));
+  if(e.flee)G.pickups.push(makePickup(e.x,e.y,'magnet')); // 보물 고블린 보너스
   if(e.boss){
     G.pickups.push(makePickup(e.x,e.y,'chest'));
     if(e.final){G.wonBoss=true;}
     G.bossActive=(G.bossActive===e)?null:G.bossActive;
     Sound.boom();
+    unlockAch('boss1'); if(e.type==='reaper')unlockAch('reaper');
   } else if(Math.random()<0.012)G.pickups.push(makePickup(e.x,e.y,'heart'));
   else if(Math.random()<0.006)G.pickups.push(makePickup(e.x,e.y,'magnet'));
   else if(Math.random()<0.004)G.pickups.push(makePickup(e.x,e.y,'bomb'));
   swapRemove(G.enemies,idx);
   G.kills++;
+  if(G.kills>=100)unlockAch('k100');
+  // 손맛: 킬 콤보
+  G.combo++;G.comboT=1.3;if(G.combo>G.comboBest)G.comboBest=G.combo;
+  if(G.combo%25===0){G.goldRun+=2;FX.text(e.x,e.y-14,'콤보 +2G','#ffcf5c',12);}
   Sound.hit();
   if(e.final)winGame();
 }
@@ -883,12 +963,12 @@ function updatePlayer(p,dt){
 }
 function fireBoomerang(p,w){
   const def=WEAPONS.boom,lv=w.lv;const count=1+Math.floor(lv/3)+Math.floor(p.projAdd/2);
-  const dmg=wStat(def,'dmg',lv)*p.dmgMul;const range=(140+lv*14)*p.areaMul;
+  const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);const range=(140+lv*14)*p.areaMul;
   const t=nearestEnemy(p.x,p.y);let base=t?Math.atan2(t.y-p.y,t.x-p.x):Math.atan2(p.face.y,p.face.x);
   for(let i=0;i<count;i++){const ang=base+(i-(count-1)/2)*0.4;const cr=critRoll(p);
-    spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*430,vy:Math.sin(ang)*430,dmg:dmg*(cr?2:1),r:12*p.areaMul,pierce:999,
-      color:def.color,life:2.4,tile:T.axe2,spin:18,crit:cr,scale:p.areaMul,knock:50,glow:false,
-      kind:'boomerang',boomRange:range,boomT:0,ownerX:0,ownerY:0,hitCd:{}});}
+    spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*430,vy:Math.sin(ang)*430,dmg:dmg*(cr?2:1),r:(w.evo?19:12)*p.areaMul,pierce:999,
+      color:def.color,life:2.4,tile:T.axe2,spin:18,crit:cr,scale:(w.evo?1.7:1)*p.areaMul,knock:50,glow:false,
+      kind:'boomerang',boomRange:range,boomT:0,ownerX:0,ownerY:0,hitCd:{},src:'boom'});}
 }
 
 /* ============================================================================
@@ -900,23 +980,32 @@ function updateEnemies(p,dt){
     if(e.flash>0)e.flash-=dt;
     let sp=e.spd;if(e.slow>0){e.slow-=dt;sp*=(e.elite||e.boss)?0.85:0.65;} // CC-resist: slow is weaker, elites barely care
     const dx=p.x-e.x,dy=p.y-e.y,m=Math.hypot(dx,dy)||1;
-    e.x+=dx/m*sp*dt + e.knock.x*dt;
-    e.y+=dy/m*sp*dt + e.knock.y*dt;
+    const dirMul=e.flee?-1:1; // 보물 고블린은 도망간다
+    e.x+=dx/m*sp*dt*dirMul + e.knock.x*dt;
+    e.y+=dy/m*sp*dt*dirMul + e.knock.y*dt;
     e.knock.x*=Math.pow(0.02,dt);e.knock.y*=Math.pow(0.02,dt);
-    e.bob+=dt*8; if(Math.abs(dx)>1)e.flip=dx<0;
+    e.bob+=dt*8; if(Math.abs(dx)>1)e.flip=(dx<0)!==e.flee;
+    if(e.flee){ e.ttl-=dt; if(e.ttl<=0){FX.smoke(e.x,e.y,'#ffd45c',6);swapRemove(G.enemies,i);continue;} continue; } // 접촉딜 없음
     // contact damage
     e.atkCd-=dt;
     const rr=(e.r+p.r)*(e.r+p.r);
     if(dist2(p.x,p.y,e.x,e.y)<rr && e.atkCd<=0 && p.invuln<=0){
-      hurtPlayer(p,e.dmg);e.atkCd=0.6;
+      hurtPlayer(p,e.dmg,e);e.atkCd=0.6;
     }
   }
 }
-function hurtPlayer(p,dmg){
+function hurtPlayer(p,dmg,srcE){
+  // 도적 특성: 그림자 회피
+  if(p.char.id==='rogue'&&Math.random()<0.15){FX.text(p.x,p.y-p.r-4,'회피!','#8bef9c',13);return;}
   dmg=Math.max(1,dmg-p.armor);
   p.hp-=dmg;p.invuln=0.15;p.hurtFlash=0.3; // short i-frame: swarms must stay lethal
   FX.text(p.x,p.y-p.r-4,'-'+Math.round(dmg),'#ff6b7a',14);
   G.shake=Math.max(G.shake,4);Sound.hurt();
+  // 기사 특성: 가시 갑옷 — 접촉 피해 50% 반사
+  if(p.char.id==='knight'&&srcE&&srcE.hp>0)damageEnemy(srcE,Math.max(1,Math.round(dmg*0.5)),false,{x:srcE.x-p.x,y:srcE.y-p.y},'#c9d4e6','thorns');
+  // 서리마녀 특성: 서리 갑옷 — 피격 시 주변 둔화
+  if(p.char.id==='sorc'){const r2=120*120;for(const e of G.enemies)if(dist2(p.x,p.y,e.x,e.y)<=r2)e.slow=Math.max(e.slow,1.2);
+    FX.ring(p.x,p.y,'#8be9ff',10,120,0.4);}
   if(p.hp<=0)tryDie(p);
 }
 function tryDie(p){
@@ -958,7 +1047,7 @@ function updateProjectiles(dt){
       if(pr.hitSet.has(e.uid))continue;
       const rr=(pr.r+e.r)*(pr.r+e.r);
       if(dist2(pr.x,pr.y,e.x,e.y)<=rr){
-        damageEnemy(e,pr.dmg,pr.crit,{x:pr.vx,y:pr.vy},pr.color);
+        damageEnemy(e,pr.dmg,pr.crit,{x:pr.vx,y:pr.vy},pr.color,pr.src);
         pr.hitSet.add(e.uid);
         if(pr.onHit)pr.onHit(pr.x,pr.y);
         if(pr.kind!=='boomerang'&&pr.pierce<999){ if(pr.pierce<=0){swapRemove(G.projs,i);break;} pr.pierce--; }
@@ -996,12 +1085,20 @@ function collectPickup(p,k){
     case 'heart':{p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.3);FX.text(p.x,p.y-p.r,'+HP','#8bef9c',15);FX.spark(k.x,k.y,'#8bef9c',10,120,0.4,3);Sound.pick();break;}
     case 'magnet':{p.magnetT=2.5;UI.toast('🧲 자석!');Sound.pick();break;}
     case 'bomb':{FX.ring(p.x,p.y,'#ffce54',10,Math.max(innerWidth,innerHeight),0.5);G.shake=12;Sound.boom();
-      for(const e of [...G.enemies])if(!e.boss)damageEnemy(e,e.maxHp,false,null,'#ffce54');else damageEnemy(e,e.maxHp*0.12,false,null,'#ffce54');
+      for(const e of [...G.enemies])if(!e.boss)damageEnemy(e,e.maxHp,false,null,'#ffce54','bomb');else damageEnemy(e,e.maxHp*0.12,false,null,'#ffce54','bomb');
       UI.toast('💥 폭탄!');break;}
     case 'chest':{openChest(p);break;}
   }
 }
 function openChest(p){
+  // 진화 후보가 있으면 최우선으로 각성
+  const evw=evoCandidate(p);
+  if(evw){ evw.evo=true; const ev=EVOS[evw.id];
+    FX.ring(p.x,p.y,'#ffcf5c',10,260,0.8); FX.spark(p.x,p.y,'#ffcf5c',24,220,0.8,4);
+    G.shake=Math.max(G.shake,8); Sound.levelup();
+    UI.toast('⚡ 무기 진화! 「'+ev.name+'」 — '+ev.desc); UI.buildChips();
+    unlockAch('evolve');
+    return; }
   // grant 1-3 upgrades instantly; maxed build gets gold + full heal instead
   const n=randi(1,3);let got=[];
   for(let i=0;i<n;i++){const opt=rollOneUpgrade(p);if(opt){applyChoice(p,opt);got.push(opt.title);}}
@@ -1018,6 +1115,7 @@ function gainXp(p,v){
   p.xp+=v*p.xpMul;
   let leveled=0;
   while(p.xp>=p.xpNeed){p.xp-=p.xpNeed;p.level++;p.xpNeed=xpForLevel(p.level);leveled++;}
+  if(p.level>=30)unlockAch('lv30');
   if(leveled>0)openLevelUp(leveled);
 }
 function buildUpgradePool(p,exclude){
@@ -1083,6 +1181,31 @@ function skipChoice(){ G.player.hp=Math.min(G.player.maxHp,G.player.hp+G.player.
 /* ============================================================================
    WIN / LOSE
    ============================================================================ */
+/* ---- 업적 ---- */
+const ACHS=[
+  {id:'k100',  name:'학살의 시작', desc:'한 판에 100마리 처치', gold:100},
+  {id:'t5',    name:'끈질긴 생존자', desc:'5분 생존', gold:150},
+  {id:'t10',   name:'불굴의 의지', desc:'10분 생존', gold:300},
+  {id:'boss1', name:'첫 정벌', desc:'보스 처치', gold:150},
+  {id:'reaper',name:'사신 사냥꾼', desc:'사신 처치', gold:300},
+  {id:'evolve',name:'각성', desc:'무기 진화 달성', gold:300},
+  {id:'lv30',  name:'초월자', desc:'레벨 30 도달', gold:200},
+  {id:'clear', name:'마왕 토벌', desc:'게임 클리어', gold:1000},
+];
+function unlockAch(id){ if(!META.ach)META.ach={}; if(META.ach[id])return;
+  const a=ACHS.find(a=>a.id===id); if(!a)return;
+  META.ach[id]=true; META.gold+=a.gold; saveMeta();
+  UI.toast('🏆 업적 달성: '+a.name+' (+'+a.gold+'G)'); Sound.levelup(); }
+
+/* ---- 점수 기록 (로컬 + 서버 시도) ---- */
+function submitScore(win){
+  const s={nick:(META.nick||'용사').slice(0,12),time:Math.round(G.time),kills:G.kills,
+    level:G.player.level,char:G.player.char.name,win:!!win,at:Date.now()};
+  META.scores=(META.scores||[]);META.scores.push(s);
+  META.scores.sort((a,b)=>(b.win-a.win)||(b.time-a.time));META.scores=META.scores.slice(0,10);
+  saveMeta();
+  try{ fetch('/ds/scores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).catch(()=>{}); }catch(e){}
+}
 function endRun(){
   const bonus=Math.floor(G.time/10)+G.kills*1;
   const total=G.goldRun+Math.floor(bonus*G.player.goldMul);
@@ -1090,11 +1213,13 @@ function endRun(){
   if(G.time>META.best.time)META.best.time=G.time;
   if(G.kills>META.best.kills)META.best.kills=G.kills;
   saveMeta();
+  submitScore(G.state==='victory'||G.wonBoss);
   return {run:G.goldRun,bonus:Math.floor(bonus*G.player.goldMul),total};
 }
 function loseGame(){ if(G.state==='gameover'||G.state==='victory')return; G.state='gameover';
   const r=endRun();Sound.die();UI.gameOver(false,r); }
 function winGame(){ if(G.state==='victory')return; G.state='victory';
+  unlockAch('clear');
   const r=endRun();Sound.win();UI.gameOver(true,r); }
 
 /* ============================================================================
@@ -1178,6 +1303,19 @@ function drawGround(camx,camy,sc,w,h){
   for(let x=x0;x<v.x1;x+=size)for(let y=y0;y<v.y1;y+=size){
     const n=((Math.sin(x*0.13+y*0.07)*12543.7)%1+1)%1;
     if(n>0.86){ctx.fillStyle='rgba(120,110,150,0.10)';const s=3+ (n*6|0);ctx.fillRect(x+size*0.5,y+size*0.5,s,s);}
+  }
+  // 던전 데코: 잔해·술통·깜빡이는 횃불 (셀 해시 고정 배치)
+  for(let x=x0;x<v.x1;x+=size)for(let y=y0;y<v.y1;y+=size){
+    const h=((Math.sin(x*0.37+y*0.53)*96811.3)%1+1)%1;
+    if(h<=0.955)continue;
+    const cx=x+size*0.5+((h*997)%1-0.5)*22, cy=y+size*0.5+((h*571)%1-0.5)*22;
+    if(h>0.992){ // 횃불 + 흔들리는 불빛
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.30+Math.sin(G.time*6+x*0.7)*0.10;
+      ctx.drawImage(Assets.glowCanvas('#ff9a4d'),cx-26,cy-26,52,52);
+      ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+      drawSprite(Assets._base(T.torch),cx,cy,17,false,0,0.9);
+    } else if(h>0.975){ ctx.globalAlpha=0.5;drawSprite(Assets._base(T.barrel),cx,cy,16,false,0,0.5);ctx.globalAlpha=1; }
+    else { drawSprite(Assets._base(h>0.965?24:12),cx,cy,15,false,0,0.30); }
   }
 }
 function sprScale(){return CAM.scale;}
@@ -1312,7 +1450,10 @@ function frame(ts){
   requestAnimationFrame(frame);
   const dt=Math.min(0.05,(ts-last)/1000)||0;last=ts;
   if(G.state==='playing'){
+    if(G.hitstop>0){G.hitstop-=dt;draw();return;} // 손맛: 타격 순간 멈칫
     G.time+=dt;G.elapsedReal+=dt;
+    if(G.comboT>0){G.comboT-=dt;if(G.comboT<=0)G.combo=0;}
+    if(G.time>=300)unlockAch('t5'); if(G.time>=600)unlockAch('t10');
     const p=G.player;
     updatePlayer(p,dt);
     updateEnemies(p,dt);
@@ -1355,13 +1496,20 @@ const UI={
     const hp=Math.max(0,Math.ceil(p.hp));
     document.getElementById('hHp').style.width=(clamp(p.hp/p.maxHp,0,1)*100)+'%';
     document.getElementById('hHpTxt').textContent=hp+' / '+p.maxHp;
+    const cb=document.getElementById('combo');
+    if(G.combo>=5){cb.classList.add('on');cb.textContent='×'+G.combo+' COMBO';
+      cb.style.fontSize=Math.min(30,16+G.combo*0.12)+'px';}
+    else cb.classList.remove('on');
   },
   buildChips(){
     const wrap=document.getElementById('hWeapons');wrap.innerHTML='';
     const p=G.player;if(!p)return;
     for(const w of p.weapons){const def=WEAPONS[w.id];const d=document.createElement('div');d.className='chip';
       d.appendChild(spriteIconCanvas(def.icon,26,def.color,0.25));
-      const lv=document.createElement('span');lv.className='lv';lv.textContent=w.lv;d.appendChild(lv);wrap.appendChild(d);}
+      const lv=document.createElement('span');lv.className='lv';
+      if(w.evo){lv.textContent='★';lv.style.background='#8a6212';d.style.boxShadow='inset 0 0 0 1px #ffcf5c88,0 0 8px #ffcf5c55,0 3px 5px #0006';}
+      else lv.textContent=w.lv;
+      d.appendChild(lv);wrap.appendChild(d);}
     for(const id in p.passives){const def=PASSIVES[id];const d=document.createElement('div');d.className='chip';
       d.style.opacity=.9;d.appendChild(spriteIconCanvas(def.icon,26,def.color,0.3));
       const lv=document.createElement('span');lv.className='lv';lv.style.background='#3a2f1a';lv.textContent=p.passives[id];d.appendChild(lv);wrap.appendChild(d);}
@@ -1383,6 +1531,10 @@ const UI={
       <div class="row">
         <button class="btn ghost sm" id="btnShop">🛡 강화 상점</button>
         <button class="btn ghost sm" id="btnBackup">💾 진행도 백업</button>
+      </div>
+      <div class="row">
+        <button class="btn ghost sm" id="btnAch">🏆 업적</button>
+        <button class="btn ghost sm" id="btnBoard">🥇 순위</button>
         <button class="btn ghost sm" id="btnHow">❔ 조작법</button>
       </div>
       <div class="hint" id="saveWarn" style="color:#ff6b7a;display:none">⚠ 이 환경은 자동 저장이 제한됩니다 — <b>진행도 백업</b>으로 코드를 보관하세요.</div>
@@ -1396,6 +1548,8 @@ const UI={
     document.getElementById('btnPlay').onclick=()=>{Sound.init();this.charSelect();};
     document.getElementById('btnShop').onclick=()=>{Sound.init();this.shop();};
     document.getElementById('btnBackup').onclick=()=>this.backup();
+    document.getElementById('btnAch').onclick=()=>this.achievements();
+    document.getElementById('btnBoard').onclick=()=>this.board();
     document.getElementById('btnHow').onclick=()=>this.howto();
     if(!STORAGE_OK)document.getElementById('saveWarn').style.display='block';
     this.muteButton();
@@ -1418,9 +1572,69 @@ const UI={
       ⌨️ 카드 선택: <b>1~4</b> 숫자키 · <b>↑↓</b>+<b>Enter</b> · <b>R</b> 리롤<br>
       💰 골드로 <b>강화 상점</b>에서 영구 능력 · 새 캐릭터 해금<br>
       🎁 미니보스는 보물상자를 떨군다<br>
+      ⚡ <b>만렙 무기 + 페어 패시브</b> 보유 시 보스 상자에서 무기가 <b>진화</b>!<br>
       ⏸ 우측 상단 버튼(또는 Space/Esc)으로 일시정지</div>
       <button class="btn ghost" id="howBack">돌아가기</button></div>`;
     document.getElementById('howBack').onclick=()=>this.title();
+  },
+  /* ---------- 업적 ---------- */
+  achievements(){
+    G.state='menu';this.overlay(true);
+    const done=id=>META.ach&&META.ach[id];
+    const cnt=ACHS.filter(a=>done(a.id)).length;
+    overlay.innerHTML=`<div class="panel fade"><h2 class="sec">업적 ${cnt}/${ACHS.length}</h2>
+      <div style="display:flex;flex-direction:column;gap:7px;width:100%">${ACHS.map(a=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:${done(a.id)?'linear-gradient(90deg,#2c2347,#1c1631)':'#171025'};box-shadow:inset 0 0 0 1px ${done(a.id)?'#ffcf5c44':'#ffffff10'};${done(a.id)?'':'opacity:.55'}">
+          <span style="font-size:17px">${done(a.id)?'🏆':'🔒'}</span>
+          <div style="flex:1;text-align:left"><div style="font-size:13px;font-weight:700">${a.name}</div>
+          <div style="font-size:11px;color:var(--dim)">${a.desc}</div></div>
+          <span style="color:var(--gold);font-size:12px">+${a.gold}G</span></div>`).join('')}</div>
+      <button class="btn ghost sm" id="achBack">돌아가기</button></div>`;
+    document.getElementById('achBack').onclick=()=>this.title();
+  },
+  /* ---------- 순위 ---------- */
+  board(){
+    G.state='menu';this.overlay(true);
+    const row=(rank,s)=>`<div style="display:flex;gap:8px;font-size:12.5px;padding:6px 9px;border-radius:8px;background:${rank<=3?'#241b3d':'#1a1428'};align-items:center">
+      <b style="width:20px;color:${rank===1?'#ffcf5c':rank===2?'#c9d4e6':rank===3?'#e0955a':'#8a7fa8'}">${rank}</b>
+      <span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.win?'👑 ':''}${(s.nick||'용사')}</span>
+      <span style="color:var(--dim);font-size:11px">${s.char||''}</span>
+      <b style="width:46px;text-align:right">${fmtTime(s.time)}</b>
+      <span style="width:52px;text-align:right;color:var(--dim)">${s.kills}킬</span></div>`;
+    const localRows=(META.scores||[]).map((s,i)=>row(i+1,s)).join('')||'<div class="hint">아직 기록이 없습니다 — 한 판 돌고 오세요!</div>';
+    overlay.innerHTML=`<div class="panel fade"><h2 class="sec">순위</h2>
+      <div class="row" style="align-items:center">
+        <input id="nickIn" maxlength="12" value="${(META.nick||'').replace(/"/g,'')}" placeholder="닉네임 (기록에 표시)"
+          style="pointer-events:auto;user-select:text;-webkit-user-select:text;background:#0d0a16;color:var(--ink);border:1px solid #ffffff26;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:13px;width:180px;touch-action:auto">
+        <button class="btn sm" id="nickSave">저장</button>
+      </div>
+      <div style="width:100%;text-align:left;font-size:11px;color:var(--dim);letter-spacing:2px">내 기록 TOP 10</div>
+      <div style="display:flex;flex-direction:column;gap:5px;width:100%">${localRows}</div>
+      <div style="width:100%;text-align:left;font-size:11px;color:var(--dim);letter-spacing:2px;margin-top:6px">서버 순위 TOP 10</div>
+      <div id="srvBoard" style="display:flex;flex-direction:column;gap:5px;width:100%"><div class="hint">불러오는 중…</div></div>
+      <button class="btn ghost sm" id="boardBack">돌아가기</button></div>`;
+    document.getElementById('nickSave').onclick=()=>{META.nick=document.getElementById('nickIn').value.trim().slice(0,12);saveMeta();UI.toast('닉네임 저장: '+(META.nick||'용사'));};
+    document.getElementById('boardBack').onclick=()=>this.title();
+    fetch('/ds/scores').then(r=>r.ok?r.json():Promise.reject())
+      .then(list=>{const el=document.getElementById('srvBoard');if(!el)return;
+        el.innerHTML=(Array.isArray(list)&&list.length)?list.slice(0,10).map((s,i)=>row(i+1,s)).join(''):'<div class="hint">아직 서버 기록이 없습니다</div>';})
+      .catch(()=>{const el=document.getElementById('srvBoard');if(el)el.innerHTML='<div class="hint">서버 순위는 게임천국 서버로 접속했을 때만 표시됩니다</div>';});
+  },
+  /* ---------- 무기별 딜량 통계 ---------- */
+  dmgHtml(){
+    const names={thorns:'가시 갑옷',bomb:'폭탄'};
+    const rows=Object.entries(G.dmgStats).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    if(!rows.length)return '';
+    const fmt=n=>n>=1000?(n/1000).toFixed(1)+'k':Math.round(n);
+    return `<div style="background:#160f24;border-radius:12px;padding:10px 14px;box-shadow:inset 0 0 0 1px #ffffff14;width:min(320px,86vw)">
+      <div style="font-size:11px;color:var(--dim);letter-spacing:2px;margin-bottom:6px">무기별 피해량</div>
+      ${rows.map(([id,v])=>{const w=WEAPONS[id];const nm=w?w.name:(names[id]||id);
+        return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0">
+          <span style="flex:0 0 92px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${nm}</span>
+          <div style="flex:1;height:6px;border-radius:3px;background:#ffffff12;overflow:hidden">
+            <div style="height:100%;width:${Math.round(v/rows[0][1]*100)}%;background:${w?w.color:'#8fa3bd'}"></div></div>
+          <span style="flex:0 0 46px;text-align:right;color:var(--dim)">${fmt(v)}</span></div>`;}).join('')}
+    </div>`;
   },
   backup(){
     this.overlay(true);
@@ -1485,7 +1699,7 @@ const UI={
         grid.appendChild(el);
       }
       const c=CHAR(sel);document.getElementById('charBlurb').innerHTML=
-        `<b style="color:#fff">${c.name}</b> — ${c.blurb}<br><span style="color:#8be9ff">시작 무기: ${WEAPONS[c.weapon].name}</span>`;
+        `<b style="color:#fff">${c.name}</b> — ${c.blurb}<br><span style="color:#8be9ff">시작 무기: ${WEAPONS[c.weapon].name}</span><br><span style="color:#ffcf5c">✨ ${c.trait}</span>`;
       document.getElementById('startBtn').onclick=()=>{if(META.unlocked[sel])startRun(sel);else UI.toast('먼저 해금하세요');};
       document.getElementById('backBtn').onclick=()=>this.title();
     };
@@ -1568,6 +1782,7 @@ const UI={
     overlay.innerHTML=`<div class="panel fade">
       <div class="title" style="font-size:34px">일시정지</div>
       <div class="kv"><span>레벨 <b>${p.level}</b></span><span>시간 <b>${fmtTime(G.time)}</b></span><span>처치 <b>${G.kills}</b></span></div>
+      ${this.dmgHtml()}
       <div class="row">
         <button class="btn gold" id="resumeBtn">계속하기 ▶</button>
       </div>
@@ -1602,6 +1817,7 @@ const UI={
         <div style="height:1px;background:#ffffff1a;margin:8px 0"></div>
         <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800"><span>합계</span><span style="color:#ffcf5c">+${r.total} G</span></div>
       </div>
+      ${this.dmgHtml()}
       <div class="goldpill"><span class="c"></span> 보유 <b>${META.gold}</b></div>
       ${shopHint}
       <div class="row">
@@ -1654,6 +1870,20 @@ function boot(){
   requestAnimationFrame(frame);
   document.getElementById('loadscreen').style.display='none';
   UI.title();
+  // PWA: 런타임 매니페스트(아이콘 캔버스 생성) + 서비스워커(별도 sw.js 있을 때만)
+  try{
+    const ic=document.createElement('canvas');ic.width=ic.height=192;const g=ic.getContext('2d');
+    g.fillStyle='#0a0710';g.fillRect(0,0,192,192);g.imageSmoothingEnabled=false;
+    g.drawImage(Assets._base(T.mage),32,32,128,128);
+    const man={name:'던전 서바이버즈',short_name:'던전서바',display:'fullscreen',orientation:'any',
+      background_color:'#0a0710',theme_color:'#0a0710',start_url:'.',
+      icons:[{src:ic.toDataURL(),sizes:'192x192',type:'image/png'}]};
+    const l=document.createElement('link');l.rel='manifest';
+    l.href='data:application/manifest+json,'+encodeURIComponent(JSON.stringify(man));
+    document.head.appendChild(l);
+    if('serviceWorker' in navigator && location.protocol==='https:' && window===top)
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }catch(e){}
 }
 Assets.load(boot);
 </script>

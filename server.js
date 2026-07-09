@@ -423,12 +423,38 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
   '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
 };
+// ---- 던전 서바이버즈 리더보드 (파일 영속) ----
+const DS_SCORE_FILE = path.join(__dirname, 'ds-scores.json');
+let dsScores = [];
+try { dsScores = JSON.parse(fs.readFileSync(DS_SCORE_FILE, 'utf8')); if (!Array.isArray(dsScores)) dsScores = []; } catch (e) {}
+
 const server = http.createServer((req, res) => {
   let rel = decodeURIComponent(req.url.split('?')[0]);
   if (rel === '/stats'){ // 게임천국 허브: 실시간 접속자 수
     const players = snakes.reduce((n, s) => n + (s.isBot ? 0 : 1), 0);
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ players, bots: snakes.length - players }));
+    return;
+  }
+  if (rel === '/ds/scores'){ // 던전 서바이버즈 순위
+    const HDR = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' };
+    if (req.method === 'POST'){
+      let body = '';
+      req.on('data', c => { body += c; if (body.length > 2048) req.destroy(); });
+      req.on('end', () => { try {
+        const s = JSON.parse(body);
+        const entry = { nick: String(s.nick || '용사').slice(0, 12), time: Math.min(3600, Math.max(0, Math.round(+s.time || 0))),
+          kills: Math.min(99999, Math.max(0, (+s.kills | 0))), level: Math.min(999, Math.max(0, (+s.level | 0))),
+          char: String(s.char || '').slice(0, 10), win: !!s.win, at: Date.now() };
+        dsScores.push(entry);
+        dsScores.sort((a, b) => (b.win - a.win) || (b.time - a.time));
+        dsScores = dsScores.slice(0, 50);
+        try { fs.writeFileSync(DS_SCORE_FILE, JSON.stringify(dsScores)); } catch (e) {}
+        res.writeHead(200, HDR); res.end(JSON.stringify({ ok: true, rank: dsScores.indexOf(entry) + 1 }));
+      } catch (e) { res.writeHead(400, HDR); res.end('{"ok":false}'); } });
+      return;
+    }
+    res.writeHead(200, HDR); res.end(JSON.stringify(dsScores.slice(0, 20)));
     return;
   }
   if (rel.endsWith('/')) rel += 'index.html';
