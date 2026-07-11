@@ -402,13 +402,13 @@ const WEAPONS={
   whirl:{name:'회전 검',icon:T.scim,color:'#cfe0ff',max:8,cat:'w',
     desc:lv=>`몸 주위를 도는 검 ${1+Math.floor((lv+1)/2)}자루`,dmg:arr(7,2.2),},
   axe:{name:'투척 도끼',icon:T.axe,color:'#ffb15a',max:8,cat:'w',
-    desc:lv=>'위로 던져 낙하하며 관통 강타',dmg:arr(16,5),cd:arr(1.5,-0.07),},
+    desc:lv=>'위로 던져 낙하하며 관통 강타',dmg:arr(18,6),cd:arr(1.35,-0.07),},
   arrow:{name:'관통 화살',icon:T.sword2,color:'#b6ff8b',max:8,cat:'w',
     desc:lv=>'적을 꿰뚫는 고속 화살',dmg:arr(11,3.4),cd:arr(0.85,-0.04),},
   nova:{name:'서리 폭발',icon:T.staffBlue,color:'#8be9ff',max:8,cat:'w',
     desc:lv=>'주위로 퍼지는 냉기 · 적 둔화',dmg:arr(10,3),cd:arr(2.2,-0.11),},
   fire:{name:'화염구',icon:T.staffRed,color:'#ff8a4d',max:8,cat:'w',
-    desc:lv=>'폭발하는 화염구로 광역 피해',dmg:arr(22,7),cd:arr(1.8,-0.08),},
+    desc:lv=>'폭발하는 화염구로 광역 피해',dmg:arr(22,7),cd:arr(1.6,-0.08),},
   bolt2:{name:'연쇄 번개',icon:T.wandPink,color:'#e08bff',max:8,cat:'w',
     desc:lv=>'적 사이로 튕기는 번개',dmg:arr(14,4),cd:arr(1.6,-0.07),},
   aura:{name:'성역',icon:T.potG,color:'#a6ff7a',max:8,cat:'w',
@@ -416,7 +416,11 @@ const WEAPONS={
   dagger:{name:'단검 난사',icon:T.dagger,color:'#ffe08b',max:8,cat:'w',
     desc:lv=>'진행 방향으로 단검 부채꼴 발사',dmg:arr(8,2.5),cd:arr(0.7,-0.03),},
   boom:{name:'부메랑',icon:T.axe2,color:'#9ad0ff',max:8,cat:'w',
-    desc:lv=>'돌아오는 부메랑 · 다중 관통',dmg:arr(12,3.6),cd:arr(1.5,-0.06),},
+    desc:lv=>'돌아오는 부메랑 · 다중 관통',dmg:arr(13,4),cd:arr(1.5,-0.06),},
+  spirit:{name:'원혼 정령',icon:T.ghostG,color:'#9dffb0',max:8,cat:'w',
+    desc:lv=>`영혼 ${1+((lv+1)>=4?1:0)+((lv+1)>=7?1:0)}마리가 적을 스스로 추적·공격`,dmg:arr(10,3),},
+  mine:{name:'마력 지뢰',icon:T.orbStone,color:'#ff9ad5',max:8,cat:'w',
+    desc:lv=>`지뢰 ${1+((lv+1)>=3?1:0)+((lv+1)>=6?1:0)}개 설치 · 밟으면 광역 폭발`,dmg:arr(24,7),cd:arr(2.4,-0.12),},
 };
 const MAX_WEAPONS=6;
 
@@ -432,6 +436,8 @@ const EVOS={
   aura:{pass:'regen',name:'신성 재판',desc:'범위 1.4배 · 피해 2배'},
   dagger:{pass:'swift',name:'그림자 칼날',desc:'단검 2배 · 피해 2배'},
   boom:{pass:'area',name:'태풍 부메랑',desc:'거대 부메랑 · 피해 2배'},
+  spirit:{pass:'magnet',name:'원혼의 군주',desc:'정령 2배 · 추적 가속 · 피해 2배'},
+  mine:{pass:'armor',name:'대재앙 지뢰밭',desc:'지뢰 +2 · 반경 1.5배 · 피해 2배'},
 };
 function evoCandidate(p){
   for(const w of p.weapons){ if(w.evo)continue; const ev=EVOS[w.id];
@@ -570,6 +576,7 @@ function spawnProj(o){
 const G={
   state:'menu', time:0, kills:0, goldRun:0, cam:{x:0,y:0}, shake:0,
   player:null, enemies:[], projs:[], gems:[], pickups:[], orbitals:[],
+  eprojs:[], zones:[],
   spawnT:0, difT:0, bossQ:[], bossActive:null, wonBoss:false, elapsedReal:0,
   selChar:'mage', pendingLevels:0, luChoices:null, run:0,
   dmgStats:{}, combo:0, comboT:0, comboBest:0, hitstop:0, eventT:0,
@@ -604,7 +611,7 @@ function makePlayer(charId){
   p.revives=up('revive');
   p.reroll=up('reroll');
   const startLv=up('startlv');
-  p.moveSpd=150*p.spdMul;
+  p.moveSpd=136*p.spdMul;
   p.hp=p.maxHp;
   // starting weapon
   addWeapon(p,c.weapon);
@@ -632,7 +639,7 @@ function recomputeStats(p){
   p.regen=0;
   // passives
   for(const id in p.passives){const lv=p.passives[id];for(let i=0;i<lv;i++)PASSIVES[id].apply(p);}
-  p.moveSpd=150*p.spdMul;
+  p.moveSpd=136*p.spdMul;
   p.hp=Math.min(p.hp,p.maxHp);
 }
 
@@ -642,6 +649,7 @@ function recomputeStats(p){
 function startRun(charId){
   G.selChar=charId; G.state='playing'; G.time=0; G.kills=0; G.goldRun=0;
   G.enemies.length=0;G.projs.length=0;G.gems.length=0;G.pickups.length=0;G.orbitals.length=0;
+  G.eprojs.length=0;G.zones.length=0;
   FX.parts.length=0;FX.texts.length=0;
   G.spawnT=0;G.difT=0;G.bossActive=null;G.wonBoss=false;G.elapsedReal=0;G.run++;
   G.dmgStats={};G.combo=0;G.comboT=0;G.comboBest=0;G.hitstop=0;G.eventT=rand(60,85);
@@ -836,6 +844,15 @@ function fireWeapon(p,w){
     case 'nova':{
       const r=(70+lv*10)*area*(w.evo?1.5:1); explode(p.x,p.y,r,dmgBase,def.color,true,(0.5+lv*0.05)*(w.evo?2:1),src);
       FX.ring(p.x,p.y,def.color,10,r,0.5); G.shake=Math.max(G.shake,3);break;}
+    case 'mine':{
+      if(!w.mines)w.mines=[];
+      const count=1+(lv>=3?1:0)+(lv>=6?1:0)+Math.floor(p.projAdd/2)+(w.evo?2:0);
+      const maxMines=w.evo?14:9;
+      for(let i=0;i<count;i++){ if(w.mines.length>=maxMines)break;
+        const a=rand(TAU),d=rand(46,120);
+        w.mines.push({x:p.x+Math.cos(a)*d,y:p.y+Math.sin(a)*d,arm:0.45,life:10,r:13,blink:rand(TAU)});
+        FX.spark(p.x,p.y,def.color,2,60,0.25,2);}
+      break;}
   }
 }
 function nearestEnemyExcluding(x,y,list){let best=null,bd=Infinity;for(const e of G.enemies){if(list.includes(e))continue;const d=dist2(x,y,e.x,e.y);if(d<bd){bd=d;best=e;}}return best;}
@@ -877,6 +894,40 @@ function updatePersistent(p,dt){
           const m=Math.hypot(e.x-p.x,e.y-p.y)||1;const kb=55*(e.boss?0.12:e.elite?0.35:1)/(1+G.time/360);e.knock.x+=(e.x-p.x)/m*kb;e.knock.y+=(e.y-p.y)/m*kb;}}
       }
       w._rad=rad;
+    }
+    else if(w.id==='spirit'){
+      const def=WEAPONS.spirit,lv=w.lv;
+      const cnt=(1+(lv>=4?1:0)+(lv>=7?1:0)+Math.floor(p.projAdd/2))*(w.evo?2:1);
+      if(!w.pets)w.pets=[];
+      while(w.pets.length<cnt)w.pets.push({x:p.x+rand(-24,24),y:p.y+rand(-24,24),vx:0,vy:0,bob:rand(TAU)});
+      while(w.pets.length>cnt)w.pets.pop();
+      const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);
+      const acc=w.evo?1600:1000, maxSp=w.evo?360:265;
+      for(let i=0;i<w.pets.length;i++){const pet=w.pets[i];pet.bob+=dt*9;
+        let tgt=nearestEnemy(pet.x,pet.y,430);
+        if(!tgt||dist2(pet.x,pet.y,p.x,p.y)>540*540)tgt=p; // 너무 멀면 귀환
+        const dx=tgt.x-pet.x,dy=tgt.y-pet.y,m=Math.hypot(dx,dy)||1;
+        pet.vx+=dx/m*acc*dt;pet.vy+=dy/m*acc*dt;
+        const sp=Math.hypot(pet.vx,pet.vy);if(sp>maxSp){pet.vx*=maxSp/sp;pet.vy*=maxSp/sp;}
+        pet.x+=pet.vx*dt;pet.y+=pet.vy*dt;
+        for(const e of G.enemies){const rr=(12+e.r)*(12+e.r);
+          if(dist2(pet.x,pet.y,e.x,e.y)<rr&&enemyHit(e,'sp'+i,0.5)){const cr=critRoll(p);
+            damageEnemy(e,dmg*(cr?2:1),cr,{x:e.x-pet.x,y:e.y-pet.y},def.color,'spirit');
+            FX.spark(pet.x,pet.y,def.color,3,90,0.25,2.5);}}
+      }
+    }
+    else if(w.id==='mine'&&w.mines){
+      const def=WEAPONS.mine,lv=w.lv;
+      const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);
+      const rad=(58+lv*5)*p.areaMul*(w.evo?1.5:1);
+      for(let i=w.mines.length-1;i>=0;i--){const mn=w.mines[i];
+        if(mn.arm>0){mn.arm-=dt;continue;}
+        mn.life-=dt;mn.blink+=dt*7;
+        if(mn.life<=0){FX.smoke(mn.x,mn.y,def.color,3);swapRemove(w.mines,i);continue;}
+        for(const e of G.enemies){ if(dist2(mn.x,mn.y,e.x,e.y)<(mn.r+e.r)*(mn.r+e.r)){
+          explode(mn.x,mn.y,rad,dmg,def.color,false,0,'mine');Sound.boom();G.shake=Math.max(G.shake,2);
+          swapRemove(w.mines,i);break;}}
+      }
     }
     else if(w.id==='boom'){
       // handled as timed spawner below (cd), but projectiles curve back
@@ -952,7 +1003,7 @@ function updatePlayer(p,dt){
   if(p.magnetT>0){p.magnetT-=dt;}
   // weapons cd
   for(const w of p.weapons){
-    if(w.id==='whirl'||w.id==='aura')continue;
+    if(w.id==='whirl'||w.id==='aura'||w.id==='spirit')continue;
     const def=WEAPONS[w.id];
     let cd=(def.cd?wStat(def,'cd',w.lv):1.0)*p.cdMul;
     w.cd-=dt;
@@ -979,10 +1030,11 @@ function updateEnemies(p,dt){
     const e=G.enemies[i];
     if(e.flash>0)e.flash-=dt;
     let sp=e.spd;if(e.slow>0){e.slow-=dt;sp*=(e.elite||e.boss)?0.85:0.65;} // CC-resist: slow is weaker, elites barely care
+    const aiLock=e.boss?bossAI(e,p,dt):false; // 보스: 시전·돌진 중엔 추격 정지
     const dx=p.x-e.x,dy=p.y-e.y,m=Math.hypot(dx,dy)||1;
     const dirMul=e.flee?-1:1; // 보물 고블린은 도망간다
-    e.x+=dx/m*sp*dt*dirMul + e.knock.x*dt;
-    e.y+=dy/m*sp*dt*dirMul + e.knock.y*dt;
+    e.x+=(aiLock?0:dx/m*sp*dt*dirMul) + e.knock.x*dt;
+    e.y+=(aiLock?0:dy/m*sp*dt*dirMul) + e.knock.y*dt;
     e.knock.x*=Math.pow(0.02,dt);e.knock.y*=Math.pow(0.02,dt);
     e.bob+=dt*8; if(Math.abs(dx)>1)e.flip=(dx<0)!==e.flee;
     if(e.flee){ e.ttl-=dt; if(e.ttl<=0){FX.smoke(e.x,e.y,'#ffd45c',6);swapRemove(G.enemies,i);continue;} continue; } // 접촉딜 없음
@@ -1056,6 +1108,115 @@ function updateProjectiles(dt){
   }
 }
 function angDiff(a,b){let d=(b-a)%TAU;if(d>Math.PI)d-=TAU;if(d<-Math.PI)d+=TAU;return d;}
+
+/* ============================================================================
+   ENEMY PROJECTILES · TELEGRAPH ZONES · BOSS AI
+   ============================================================================ */
+function spawnEProj(o){ o.angle=o.angle!==undefined?o.angle:Math.atan2(o.vy,o.vx); G.eprojs.push(o); return o; }
+function updateEProjs(dt){
+  const p=G.player;if(!p)return;
+  for(let i=G.eprojs.length-1;i>=0;i--){const pr=G.eprojs[i];
+    if(pr.delay>0){pr.delay-=dt;continue;}
+    pr.life-=dt; if(pr.life<=0){swapRemove(G.eprojs,i);continue;}
+    if(pr.kind==='ring'){ // 확장 충격파 — gap 방향으로 회피
+      pr.r+=pr.grow*dt;
+      if(!pr.hitP&&p.invuln<=0){const d=Math.hypot(p.x-pr.x,p.y-pr.y);
+        if(Math.abs(d-pr.r)<pr.band+p.r){const pa=Math.atan2(p.y-pr.y,p.x-pr.x);
+          if(Math.abs(angDiff(pr.gapA,pa))>pr.gapW/2){pr.hitP=true;hurtPlayer(p,pr.dmg);}}}
+      if(pr.r>pr.maxR)swapRemove(G.eprojs,i);
+      continue; }
+    pr.x+=pr.vx*dt;pr.y+=pr.vy*dt;
+    if(pr.spin)pr.angle+=pr.spin*dt;
+    if(p.invuln<=0&&dist2(pr.x,pr.y,p.x,p.y)<(pr.r+p.r)*(pr.r+p.r)){
+      hurtPlayer(p,pr.dmg);FX.spark(pr.x,pr.y,pr.color,5,100,0.3,3);swapRemove(G.eprojs,i);}
+  }
+}
+function spawnZone(o){ o.t=0;o.hitT=0;o.tick=o.tick||0.5;o.live=false;G.zones.push(o);return o; }
+function updateZones(dt){
+  const p=G.player;if(!p)return;
+  for(let i=G.zones.length-1;i>=0;i--){const z=G.zones[i];
+    z.t+=dt;
+    if(z.t<z.warn)continue; // 경고 표시 중
+    if(!z.live){z.live=true;FX.ring(z.x,z.y,z.color,8,z.r,0.4);
+      if(z.burst){G.shake=Math.max(G.shake,5);Sound.boom();FX.spark(z.x,z.y,z.color,14,180,0.5,4);}}
+    if(z.t>=z.warn+z.dur){swapRemove(G.zones,i);continue;}
+    if(p.invuln<=0&&G.time>=z.hitT&&dist2(p.x,p.y,z.x,z.y)<z.r*z.r){
+      z.hitT=G.time+z.tick; hurtPlayer(p,z.dmg); }
+  }
+}
+
+/* ---- 보스 상태머신: 시전 중 정지 → 텔레그래프 → 발동 ---- */
+function bossAI(e,p,dt){
+  if(!e.ai)e.ai={t:2.5,cast:0,mode:null,step:0,chan:0,ang:rand(TAU),tx:1,ty:0,dash:0,dashLen:0};
+  const ai=e.ai;
+  if(ai.dash>0){ // 돌진 실행
+    ai.dash-=dt; e.x+=ai.tx*ai.dashSp*dt; e.y+=ai.ty*ai.dashSp*dt;
+    FX.parts.push({x:e.x+rand(-10,10),y:e.y+rand(-10,10),vx:0,vy:0,life:0.3,max:0.3,color:e.tint||'#ff8a5a',size:5,g:0,glow:true,drag:1});
+    return true; }
+  if(ai.chan>0){ // 채널링: 회전 나선 탄막
+    ai.chan-=dt; ai.acc-=dt;
+    if(ai.acc<=0){ ai.acc=ai.rate; const arms=ai.arms||1;
+      for(let k=0;k<arms;k++){const a=ai.ang+k*TAU/arms;
+        spawnEProj({x:e.x,y:e.y,vx:Math.cos(a)*ai.psp,vy:Math.sin(a)*ai.psp,r:7,dmg:e.dmg*0.55,life:3.2,color:e.tint||'#ff5a5a'});}
+      ai.ang+=ai.turn; }
+    if(ai.chan<=0)ai.t=2.8;
+    return true; }
+  if(ai.cast>0){ ai.cast-=dt; if(ai.cast<=0)execBossSkill(e,p); return true; }
+  ai.t-=dt; if(ai.t<=0)pickBossSkill(e,p);
+  return false;
+}
+function pickBossSkill(e,p){
+  const ai=e.ai;ai.step++;
+  const aim=()=>{const dx=p.x-e.x,dy=p.y-e.y,m=Math.hypot(dx,dy)||1;ai.tx=dx/m;ai.ty=dy/m;};
+  switch(e.type){
+    case 'mimic':
+      if(ai.step%2){ aim();const base=Math.atan2(ai.ty,ai.tx); // 동전 부채꼴
+        for(let i=0;i<5;i++){const a=base+(i-2)*0.24;
+          spawnEProj({x:e.x,y:e.y,vx:Math.cos(a)*175,vy:Math.sin(a)*175,r:7,dmg:e.dmg*0.6,life:2.6,color:'#ffd45c'});}
+        Sound.coin();ai.t=3.0;
+      } else { aim();ai.mode='dash';ai.cast=0.9;ai.dashLen=300;ai.dashSp=430; }
+      break;
+    case 'brood':
+      if(ai.step%2){ const n=randi(6,8); // 새끼 소환
+        for(let i=0;i<n;i++){const a=i/n*TAU;const s=spawnEnemy('spider',e.x+Math.cos(a)*44,e.y+Math.sin(a)*44);s.xp=1;s.goldDrop=0;}
+        FX.ring(e.x,e.y,e.tint||'#b05aff',8,90,0.5);UI.toast('🕷 거미 여왕이 새끼를 부른다!');ai.t=4.2;
+      } else { for(let i=0;i<3;i++)spawnZone({x:p.x+rand(-140,140),y:p.y+rand(-140,140),r:56,warn:1.0,dur:8,dmg:e.dmg*0.45,color:'#8bff5a'});
+        ai.t=4.5; }
+      break;
+    case 'reaper':{
+      const m3=ai.step%3;
+      if(m3===1){ FX.smoke(e.x,e.y,'#7fd4ff',10);const a=rand(TAU),dd=rand(125,175); // 순간이동
+        e.x=p.x+Math.cos(a)*dd;e.y=p.y+Math.sin(a)*dd;FX.smoke(e.x,e.y,'#7fd4ff',10);Sound.hit();ai.t=1.4;
+      } else if(m3===2){ const base=Math.atan2(p.y-e.y,p.x-e.x); // 낫 부채꼴
+        for(let i=0;i<7;i++){const a=base+(i-3)*0.21;
+          spawnEProj({x:e.x,y:e.y,vx:Math.cos(a)*150,vy:Math.sin(a)*150,r:9,dmg:e.dmg*0.65,life:3.0,color:'#a4c8ff',tile:T.scim,spin:9});}
+        ai.t=3.0;
+      } else { spawnZone({x:p.x,y:p.y,r:74,warn:0.9,dur:0.25,dmg:e.dmg*1.1,color:'#7fd4ff',burst:true});ai.t=3.4; }
+      break;}
+    case 'overlord':
+      if(ai.step%3===0){ for(let i=0;i<2;i++)spawnEnemy(pick(availableEnemies()),e.x+rand(-60,60),e.y+rand(-60,60),true);
+        UI.toast('⚔ 심연의 군주가 정예를 소환!');ai.t=5.0;
+      } else { for(let i=0;i<3;i++)spawnEProj({kind:'ring',x:e.x,y:e.y,r:24,grow:225,maxR:360,band:13,
+          dmg:e.dmg*0.8,life:4,delay:i*0.5,gapA:rand(TAU),gapW:1.15,color:'#ff9a5a'});
+        Sound.boom();G.shake=Math.max(G.shake,4);ai.t=5.2; }
+      break;
+    case 'demon':{
+      if(e.hp<e.maxHp*0.5&&!ai.enraged){ai.enraged=true;UI.toast('🔥 마왕 격노!');G.shake=Math.max(G.shake,8);Sound.boss();}
+      const ph2=!!ai.enraged, m3=ai.step%3;
+      if(m3===0){ aim();ai.mode='dash';ai.cast=0.85;ai.dashLen=340;ai.dashSp=470; }
+      else if(m3===1){ ai.chan=ph2?2.0:1.6;ai.rate=ph2?0.075:0.10;ai.acc=0;ai.psp=ph2?165:145;ai.turn=0.5;ai.arms=ph2?2:1; }
+      else { if(ph2){ for(let i=0;i<3;i++)spawnZone({x:p.x+rand(-110,110),y:p.y+rand(-110,110),r:66,warn:0.85,dur:0.25,dmg:e.dmg*0.9,color:'#ff4d5a',burst:true});
+          for(let i=0;i<3;i++)spawnEnemy('wraith',e.x+rand(-50,50),e.y+rand(-50,50)); }
+        else spawnZone({x:p.x,y:p.y,r:80,warn:0.9,dur:0.25,dmg:e.dmg*0.9,color:'#ff4d5a',burst:true});
+        ai.t=2.6; }
+      break;}
+  }
+}
+function execBossSkill(e,p){
+  const ai=e.ai;
+  if(ai.mode==='dash'){ ai.dash=ai.dashLen/ai.dashSp; ai.mode=null; ai.t=e.type==='demon'?2.4:3.2;
+    Sound.boom();G.shake=Math.max(G.shake,5); }
+}
 
 /* ============================================================================
    GEMS & PICKUPS
@@ -1263,11 +1424,13 @@ function draw(){
   drawGround(camx,camy,sc,w,h);
   if(p){
     // world entities
+    drawZones();
     drawGems();
     drawPickups();
     drawEnemies();
     drawPlayer(p);
     drawProjectiles();
+    drawEProjs();
     drawParticles();
     drawWeaponAuras(p);
     drawFloatingText();
@@ -1369,6 +1532,51 @@ function drawProjectiles(){
       ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(pr.x,pr.y,pr.r*0.3,0,TAU);ctx.fill();}
   }
 }
+function drawZones(){
+  for(const z of G.zones){
+    if(!z.live){ // 경고: 펄스 외곽선 + 차오르는 원
+      const wp=Math.min(1,z.t/z.warn);
+      ctx.globalAlpha=0.12+wp*0.10;ctx.fillStyle=z.color;
+      ctx.beginPath();ctx.arc(z.x,z.y,z.r,0,TAU);ctx.fill();
+      ctx.globalAlpha=0.5+Math.sin(G.time*11)*0.2;ctx.lineWidth=2/CAM.scale;ctx.strokeStyle=z.color;
+      ctx.beginPath();ctx.arc(z.x,z.y,z.r,0,TAU);ctx.stroke();
+      ctx.globalAlpha=0.85;ctx.beginPath();ctx.arc(z.x,z.y,z.r*wp,0,TAU);ctx.stroke();
+      ctx.globalAlpha=1;
+    } else { // 활성 장판
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.12+0.06*Math.sin(G.time*6+z.x);
+      ctx.drawImage(Assets.glowCanvas(z.color),z.x-z.r,z.y-z.r,z.r*2,z.r*2);
+      ctx.globalCompositeOperation='source-over';
+      ctx.globalAlpha=0.20;ctx.fillStyle=z.color;ctx.beginPath();ctx.arc(z.x,z.y,z.r,0,TAU);ctx.fill();
+      ctx.globalAlpha=0.5;ctx.lineWidth=1.5/CAM.scale;ctx.strokeStyle=z.color;
+      ctx.beginPath();ctx.arc(z.x,z.y,z.r,0,TAU);ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  }
+  // 보스 돌진 예고선
+  for(const e of G.enemies){ if(e.boss&&e.ai&&e.ai.cast>0&&e.ai.mode==='dash'){
+    ctx.save();ctx.globalAlpha=0.30+Math.sin(G.time*14)*0.15;
+    ctx.strokeStyle='#ff5a5a';ctx.lineWidth=e.r*1.7;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+e.ai.tx*(e.ai.dashLen+40),e.y+e.ai.ty*(e.ai.dashLen+40));ctx.stroke();
+    ctx.restore(); }}
+}
+function drawEProjs(){
+  for(const pr of G.eprojs){
+    if(pr.delay>0)continue;
+    if(pr.kind==='ring'){ // gap이 뚫린 충격파 링
+      const a0=pr.gapA+pr.gapW/2, a1=pr.gapA-pr.gapW/2+TAU;
+      ctx.globalAlpha=0.35;ctx.lineWidth=pr.band*1.7;ctx.strokeStyle=pr.color;
+      ctx.beginPath();ctx.arc(pr.x,pr.y,pr.r,a0,a1);ctx.stroke();
+      ctx.globalAlpha=0.95;ctx.lineWidth=2.5/CAM.scale;
+      ctx.beginPath();ctx.arc(pr.x,pr.y,pr.r,a0,a1);ctx.stroke();
+      ctx.globalAlpha=1;continue; }
+    ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.8;
+    const s=pr.r*4.2;ctx.drawImage(Assets.glowCanvas(pr.color),pr.x-s/2,pr.y-s/2,s,s);
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    if(pr.tile){const cv=Assets.tinted(pr.tile,pr.color,0.3);drawSprite(cv,pr.x,pr.y,pr.r*2.6,false,pr.angle,1);}
+    else{ctx.fillStyle=pr.color;ctx.beginPath();ctx.arc(pr.x,pr.y,pr.r*0.8,0,TAU);ctx.fill();
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(pr.x,pr.y,pr.r*0.35,0,TAU);ctx.fill();}
+  }
+}
 function drawWeaponAuras(p){
   for(const w of p.weapons){
     if(w.id==='aura'&&w._rad){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.16+Math.sin(G.time*3)*0.03;
@@ -1376,6 +1584,18 @@ function drawWeaponAuras(p){
       ctx.globalAlpha=0.4;ctx.strokeStyle='rgba(166,255,122,0.4)';ctx.lineWidth=2/CAM.scale;
       ctx.beginPath();ctx.arc(p.x,p.y,w._rad,0,TAU);ctx.stroke();
       ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';}
+    if(w.id==='spirit'&&w.pets){const tint=w.evo?'#7affc0':'#9dffb0';
+      for(const pet of w.pets){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.5;
+        ctx.drawImage(Assets.glowCanvas(tint),pet.x-15,pet.y-15,30,30);
+        ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+        drawSprite(Assets.tinted(T.ghostG,tint,0.45),pet.x,pet.y+Math.sin(pet.bob)*2.5,w.evo?26:21,pet.vx<0,0,0.92);}}
+    if(w.id==='mine'&&w.mines){for(const mn of w.mines){
+      const armed=mn.arm<=0;const bl=armed?0.5+Math.sin(mn.blink)*0.35:0.2;
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=bl;
+      ctx.drawImage(Assets.glowCanvas('#ff9ad5'),mn.x-14,mn.y-14,28,28);
+      ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+      shadow(mn.x,mn.y+4,7);
+      drawSprite(Assets.tinted(T.orbStone,'#ff9ad5',0.4),mn.x,mn.y,15,false,0,0.95);}}
     if(w.id==='whirl'){const def=WEAPONS.whirl,lv=w.lv;const cnt=1+Math.floor((lv+1)/2)+Math.floor(p.projAdd/2);
       const rad=(46+lv*3)*p.areaMul;
       for(let i=0;i<cnt;i++){const a=w.t+i/cnt*TAU;const bx=p.x+Math.cos(a)*rad,by=p.y+Math.sin(a)*rad;
@@ -1458,6 +1678,8 @@ function frame(ts){
     updatePlayer(p,dt);
     updateEnemies(p,dt);
     updateProjectiles(dt);
+    updateEProjs(dt);
+    updateZones(dt);
     updateGems(dt);
     updateSpawns(dt);
     FX.update(dt);
