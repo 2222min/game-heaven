@@ -86,7 +86,7 @@
 
   /* levelup cards */
   #luwrap{width:min(680px,96vw);display:flex;flex-direction:column;gap:12px;align-items:center;margin:auto}
-  .lucards{display:flex;flex-direction:column;gap:10px;width:100%}
+  .lucards{display:flex;flex-direction:column;gap:10px;width:100%;max-height:62vh;overflow-y:auto} /* 소형 화면 오버플로우 방지 */
   .lucard{pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;
     background:linear-gradient(100deg,#211934,#181126);box-shadow:inset 0 0 0 1px #ffffff18,0 5px 12px #0006;transition:transform .07s,box-shadow .07s;position:relative;overflow:hidden}
   .lucard:active{transform:scale(.985)}
@@ -455,6 +455,10 @@ const WEAPONS={
     desc:lv=>`영혼 ${1+((lv+1)>=4?1:0)+((lv+1)>=7?1:0)}마리가 적을 스스로 추적·공격`,dmg:arr(10,3),},
   mine:{name:'마력 지뢰',icon:T.orbStone,color:'#ff9ad5',max:8,cat:'w',
     desc:lv=>`지뢰 ${1+((lv+1)>=3?1:0)+((lv+1)>=6?1:0)}개 설치 · 밟으면 광역 폭발`,dmg:arr(24,7),cd:arr(2.4,-0.12),},
+  lance:{name:'성창',icon:T.sword,color:'#fff3b0',max:8,cat:'w',
+    desc:lv=>'전방을 꿰뚫는 신성한 창 · 강한 넉백',dmg:arr(15,4.5),cd:arr(1.1,-0.05),},
+  laser:{name:'마력 광선',icon:T.staffGrey,color:'#8bffec',max:8,cat:'w',
+    desc:lv=>'가장 가까운 적을 향해 즉발 관통 광선',dmg:arr(9,2.8),cd:arr(0.75,-0.03),},
 };
 const MAX_WEAPONS=6;
 /* 밸런스 튜닝 콘솔 툴: dumpDPS() — 전 무기 이론 DPS (기본 스탯, 패시브 미적용) */
@@ -472,6 +476,8 @@ window.dumpDPS=function(){
     whirl:lv=>({n:1,cd:0.35}),  // 접촉 히트쿨 기준(적 1기 통과 시)
     aura:lv=>({n:1,cd:Math.max(0.14,0.4-lv*0.02)}),
     spirit:lv=>({n:1+(lv>=4?1:0)+(lv>=7?1:0),cd:0.5}),
+    lance:lv=>({n:1+(lv>=5?1:0),cd:wStat(WEAPONS.lance,'cd',lv)}),
+    laser:lv=>({n:1,cd:wStat(WEAPONS.laser,'cd',lv)}),
   };
   const rows=[];
   for(const id in WEAPONS){const d=WEAPONS[id];
@@ -495,6 +501,8 @@ const EVOS={
   boom:{pass:'swift',name:'태풍 부메랑',desc:'거대 부메랑 · 피해 2배'},
   spirit:{pass:'magnet',name:'원혼의 군주',desc:'정령 2배 · 추적 가속 · 피해 2배'},
   mine:{pass:'armor',name:'대재앙 지뢰밭',desc:'지뢰 +2 · 연쇄 기폭 · 반경 1.5배 · 피해 2배'},
+  lance:{pass:'proj',name:'룬의 대창',desc:'창 2배 · 거대화 · 피해 2배'},
+  laser:{pass:'might',name:'태양포',desc:'빔 폭 2배 · 사거리 연장 · 피해 2배'},
 };
 function evoCandidate(p){
   for(const w of p.weapons){ if(w.evo)continue; const ev=EVOS[w.id];
@@ -517,6 +525,25 @@ const PASSIVES={
   armor:{name:'강철',icon:T.potW,color:'#c9d4e6',max:5,cat:'p',desc:'받는 피해 -1',apply:p=>p.armor+=1},
 };
 const MAX_PASSIVES=6;
+
+/* ============================================================================
+   STAGES — 팔레트·적 타임라인·보스 순서·전투 감각(속도/체력 배율)이 다른 무대
+   ============================================================================ */
+const STAGES=[
+  {id:'dungeon',name:'어둠의 던전',icon:'🏰',desc:'유서 깊은 마왕의 본거지',
+   unlock:()=>true, spdMul:1, hpMul:1,
+   pals:[[14,10,18],[9,14,21],[20,9,14],[26,5,9]],
+   enemies:t=>{const l=['bat'];if(t>25)l.push('spider');if(t>55)l.push('slime');if(t>90)l.push('ghost','snake');
+     if(t>160)l.push('crab');if(t>230)l.push('beetle');if(t>380){l.push('wraith');if(t>440)l.push('wraith');}return l;},
+   bossQ:()=>[{t:180,b:'mimic'},{t:360,b:'brood'},{t:540,b:'reaper'},{t:720,b:'overlord'},{t:840,b:'demon'}]},
+  {id:'sewer',name:'독기의 지하수로',icon:'🕳',desc:'빠르고 물렁한 것들이 우글거린다',
+   unlock:()=>(META.clearCount||0)>0, spdMul:1.12, hpMul:0.92,
+   pals:[[8,14,11],[12,16,7],[18,13,5],[26,5,9]],
+   enemies:t=>{const l=['snake'];if(t>20)l.push('spider');if(t>50)l.push('bat');if(t>85)l.push('slime','ghost');
+     if(t>170)l.push('wraith');if(t>240)l.push('crab');if(t>330)l.push('beetle','wraith');return l;},
+   bossQ:()=>[{t:180,b:'brood'},{t:360,b:'mimic'},{t:540,b:'overlord'},{t:720,b:'reaper'},{t:840,b:'demon'}]},
+];
+const STAGE=()=>STAGES.find(s=>s.id===G.stage)||STAGES[0];
 
 /* ============================================================================
    ENEMY TYPES
@@ -638,7 +665,7 @@ const G={
   state:'menu', time:0, kills:0, goldRun:0, cam:{x:0,y:0}, shake:0,
   player:null, enemies:[], projs:[], gems:[], pickups:[], orbitals:[],
   eprojs:[], zones:[],
-  abyss:false, abyssBossT:0, abyssBossN:0, curse:0, daily:false, flashT:0,
+  abyss:false, abyssBossT:0, abyssBossN:0, curse:0, daily:false, flashT:0, stage:'dungeon',
   spawnT:0, difT:0, bossQ:[], bossActive:null, wonBoss:false, elapsedReal:0,
   selChar:'mage', pendingLevels:0, luChoices:null, run:0,
   dmgStats:{}, combo:0, comboT:0, comboBest:0, hitstop:0, eventT:0,
@@ -710,6 +737,7 @@ function startRun(charId,opts){
   G.abyss=false;G.abyssBossT=0;G.abyssBossN=0;
   G.curse=opts.curse||0; G.daily=!!opts.daily;
   G.contracts=opts.contracts||{}; // 저주 계약 (판 단위 소모형)
+  G.stage=(opts.stage&&STAGES.find(s=>s.id===opts.stage&&s.unlock()))?opts.stage:'dungeon'; // 데일리는 항상 기본 무대(공정성)
   G.dailyDate=G.daily?(opts.seed||todayStr()):''; G.dailyForfeit=false; // 시드 날짜 보관 — 자정 크로스오버 방지
   RNG=G.daily?mulberry32(hashStr('ds-'+opts.seed)):Math.random; // 데일리: 날짜 시드
   G.enemies.length=0;G.projs.length=0;G.gems.length=0;G.pickups.length=0;G.orbitals.length=0;
@@ -724,8 +752,8 @@ function startRun(charId,opts){
   if(G.daily){ G.player.reroll=0; // 데일리: 공정 경쟁 — 리롤 금지
     UI.toast('📅 오늘의 도전 — '+G.player.char.name+' · 시드 고정 · 리롤 금지'); }
   G.cam.x=0;G.cam.y=0;G.shake=0;
-  // boss schedule (minutes)
-  G.bossQ=[{t:180,b:'mimic'},{t:360,b:'brood'},{t:540,b:'reaper'},{t:720,b:'overlord'},{t:840,b:'demon'}];
+  // boss schedule — 스테이지별 순서
+  G.bossQ=STAGE().bossQ();
   UI.hud(true); UI.overlay(false); UI.buildChips();
   Sound.init();
   if(G.pendingLevels>0){ const n=G.pendingLevels;G.pendingLevels=0; for(let i=0;i<n;i++){/* immediate level cards */} openLevelUp(n); }
@@ -757,8 +785,8 @@ function spawnEnemy(typeKey,forceX,forceY,elite){
   const d=difficulty();
   const e={
     uid:uidc++, type:typeKey, tile:base.tile, tint:base.tint, ta:base.ta||0.5,
-    x,y,vx:0,vy:0, r:base.r, spd:base.spd*rand(0.9,1.08),
-    hp:base.hp*d*curseHp()*(elite?6:1), maxHp:base.hp*d*curseHp()*(elite?6:1),
+    x,y,vx:0,vy:0, r:base.r, spd:base.spd*rand(0.9,1.08)*STAGE().spdMul,
+    hp:base.hp*d*curseHp()*STAGE().hpMul*(elite?6:1), maxHp:base.hp*d*curseHp()*STAGE().hpMul*(elite?6:1),
     dmg:base.dmg*(0.6+d*0.42)*curseDmg()*(elite?1.5:1), xp:base.xp*(elite?8:1),
     flash:0, atkCd:0, bob:rand(TAU), flip:false, scale:(elite?1.7:1)*(base.scale||1),
     knock:{x:0,y:0}, elite:!!elite, boss:false, name:null, slow:0, hcd:{},
@@ -842,16 +870,7 @@ function updateSpawns(dt){
   if(G.eventT<=0){ G.eventT=rand(75,110);
     if(G.time>60){ if(RNG()<0.55)spawnGoblin(); else spawnHorde(); } }
 }
-function availableEnemies(){
-  const t=G.time,list=['bat'];
-  if(t>25)list.push('spider');
-  if(t>55)list.push('slime');
-  if(t>90)list.push('ghost','snake');
-  if(t>160)list.push('crab');
-  if(t>230)list.push('beetle');
-  if(t>380){list.push('wraith');if(t>440)list.push('wraith');} // 5:20 급사 스파이크 완화: 지연 해금 + 점진 가중
-  return list;
-}
+function availableEnemies(){ return STAGE().enemies(G.time); } // 스테이지별 타임라인
 
 /* ============================================================================
    WEAPON FIRING
@@ -937,6 +956,28 @@ function fireWeapon(p,w){
       for(const e of Grid.query(p.x,p.y,nr+48))if(dist2(p.x,p.y,e.x,e.y)<=nr2)damageEnemy(e,dmgBase*0.5,false,{x:e.x-p.x,y:e.y-p.y},def.color,src);
       if(w.evo){const r2=r*r;for(const e of Grid.query(p.x,p.y,r+48))if(dist2(p.x,p.y,e.x,e.y)<=r2)e.frozen=Math.max(e.frozen||0,0.8);} // 절대영도: 빙결
       FX.ring(p.x,p.y,def.color,10,r,0.5); G.shake=Math.max(G.shake,3);break;}
+    case 'lance':{
+      const count=(1+(lv>=5?1:0)+Math.floor(p.projAdd/2))*(w.evo?2:1);
+      const t=nearestEnemy(p.x,p.y);let base=t?Math.atan2(t.y-p.y,t.x-p.x):Math.atan2(p.face.y,p.face.x);
+      for(let i=0;i<count;i++){const ang=base+(i-(count-1)/2)*0.22;const cr=critRoll(p);
+        spawnProj({x:p.x,y:p.y,vx:Math.cos(ang)*880,vy:Math.sin(ang)*880,dmg:dmgBase*(cr?2:1),r:9*area,pierce:999,
+          color:def.color,life:0.45,tile:T.sword,angle:ang,crit:cr,scale:(w.evo?1.6:1.1)*area,knock:85,impact:1.2,src});}
+      Sound.shoot();break;}
+    case 'laser':{
+      const t=nearestEnemy(p.x,p.y);if(!t)break;
+      const range=(250+lv*15)*area*(w.evo?1.3:1), half=12*area*(w.evo?2:1);
+      const ang=Math.atan2(t.y-p.y,t.x-p.x), ex=p.x+Math.cos(ang)*range, ey=p.y+Math.sin(ang)*range;
+      const cr=critRoll(p), dmg=dmgBase*(cr?2:1);
+      // 빔 통로 판정: 광선에 대한 수직 거리
+      for(const e of Grid.query((p.x+ex)/2,(p.y+ey)/2,range/2+64)){
+        if(e.hp<=0)continue;
+        const dx=e.x-p.x,dy=e.y-p.y;const proj=dx*Math.cos(ang)+dy*Math.sin(ang);
+        if(proj<0||proj>range)continue;
+        const perp=Math.abs(-Math.sin(ang)*dx+Math.cos(ang)*dy);
+        if(perp<=half+e.r)damageEnemy(e,dmg,cr,{x:Math.cos(ang),y:Math.sin(ang)},def.color,src,25);}
+      FX.parts.push({x:p.x,y:p.y,vx:0,vy:0,life:0.14,max:0.14,color:def.color,size:w.evo?7:4,g:0,glow:false,drag:1,line:{x:ex,y:ey}});
+      FX.spark(ex,ey,def.color,4,90,0.2,2.5);
+      Sound.shoot();break;}
     case 'mine':{
       if(!w.mines)w.mines=[];
       const count=1+(lv>=3?1:0)+(lv>=6?1:0)+Math.floor(p.projAdd/2)+(w.evo?2:0);
@@ -1655,8 +1696,8 @@ function drawGround(camx,camy,sc,w,h){
   // dark stone floor with grid + ambient vignette; parallax-free tiling
   const size=64;const v=view(sc,w,h);
   const x0=Math.floor(v.x0/size)*size, y0=Math.floor(v.y0/size)*size;
-  // 살아있는 던전: 시간이 흐르면 색조가 변한다 — 보라(초반)→청록(중반)→진홍(후반)→핏빛(심연)
-  const PALS=[[14,10,18],[9,14,21],[20,9,14],[26,5,9]];
+  // 살아있는 던전: 시간이 흐르면 색조가 변한다 (스테이지별 팔레트) — 심연은 핏빛 고정
+  const PALS=STAGE().pals;
   const tt=G.abyss?3:Math.min(2.999,G.time/300);
   const i0=tt|0, fr=tt-i0, A=PALS[i0], B=PALS[Math.min(3,i0+1)];
   const br=A[0]+(B[0]-A[0])*fr, bg=A[1]+(B[1]-A[1])*fr, bb=A[2]+(B[2]-A[2])*fr;
@@ -2145,9 +2186,16 @@ const UI={
             ${c.icon} ${c.name} <span style="color:var(--gold)">${c.cost}G</span></button>`).join('')}
         </div>
         <div class="hint" id="contractHint" style="font-size:10.5px;min-height:14px">${Object.keys(UI.contractSel).filter(k=>UI.contractSel[k]).map(k=>CONTRACTS.find(c=>c.id===k).desc).join(' · ')||'저주 계약: 1판 소모 · 위험을 사면 보상이 따른다'}</div>`:'';
+      UI.stageSel=UI.stageSel||'dungeon';
+      const stageRow=STAGES.some(s=>s.id!=='dungeon'&&s.unlock())?`<div class="row" style="gap:6px">
+          ${STAGES.map(s=>{const un=s.unlock();return `<button class="btn ghost sm stageBtn" data-s="${s.id}" ${un?'':'disabled'}
+            style="font-size:12px;${UI.stageSel===s.id?'box-shadow:inset 0 0 0 1px #8be9ff99,0 0 8px #8be9ff44':''}${un?'':'opacity:.45'}"
+            title="${s.desc}">${s.icon} ${s.name}${un?'':' 🔒'}</button>`;}).join('')}
+        </div>`:'';
       overlay.innerHTML=`<div class="panel fade">
         <h2 class="sec">캐릭터 선택</h2>
         <div class="goldpill"><span class="c"></span> <b>${META.gold}</b></div>
+        ${stageRow}
         <div class="grid" id="charGrid"></div>
         <div class="tag" id="charBlurb" style="min-height:38px"></div>
         ${curseRow}
@@ -2163,6 +2211,8 @@ const UI={
       }
       document.querySelectorAll('.contractBtn').forEach(b=>{b.onclick=()=>{
         const id=b.dataset.c;UI.contractSel[id]=!UI.contractSel[id];Sound.pick();render();};});
+      document.querySelectorAll('.stageBtn').forEach(b=>{b.onclick=()=>{
+        if(b.disabled)return;UI.stageSel=b.dataset.s;Sound.pick();render();};});
       const grid=document.getElementById('charGrid');
       for(const c of CHARS){
         const unlocked=!!META.unlocked[c.id];
@@ -2191,7 +2241,7 @@ const UI={
         if(cost>0&&META.gold<cost){Sound.hurt();UI.toast('계약 골드 부족 ('+cost+'G 필요)');return;}
         if(cost>0){META.gold-=cost;saveMeta();UI.toast('📜 계약 체결 — '+picked.map(c=>c.name).join('·')+' (-'+cost+'G)');}
         const contracts={};picked.forEach(c=>contracts[c.id]=true);
-        startRun(sel,{curse:UI.curseSel||0,contracts});};
+        startRun(sel,{curse:UI.curseSel||0,contracts,stage:UI.stageSel||'dungeon'});};
       document.getElementById('backBtn').onclick=()=>this.title();
     };
     render();
@@ -2239,7 +2289,7 @@ const UI={
     let cards=choices.map((c,i)=>{
       const pips=c.max>0?`<div class="pips" style="color:${c.color}">${Array.from({length:Math.min(c.max,8)},(_,k)=>`<span class="pip ${k<c.lv?'f':''}"></span>`).join('')}</div>`:'';
       const pairB=c.pair?` <span class="badge" style="background:#2a1f3d;color:#cbb6ff">⚡${c.pair}</span>`:'';
-      const banB=(canBan&&c.id)?`<span class="banbtn" data-ban="${i}" title="이 카드를 이번 판에서 추방" style="position:absolute;top:6px;right:8px;font-size:13px;opacity:.55;cursor:pointer;padding:2px 4px">🚫</span>`:'';
+      const banB=(canBan&&c.id)?`<span class="banbtn" data-ban="${i}" title="이 카드를 이번 판에서 추방" style="position:absolute;top:2px;right:2px;font-size:14px;opacity:.6;cursor:pointer;padding:8px 10px">🚫</span>`:''; // 모바일 터치 타깃 44px 근접
       return `<div class="lucard ${rc[c.rar]}" data-i="${i}" style="position:relative">
         <span class="knum">${i+1}</span>${banB}
         <div class="ic"><div data-icon="${i}"></div></div>
