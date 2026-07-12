@@ -418,6 +418,9 @@ const CHARS=[
   {id:'rogue', tile:T.rogue, name:'그림자 도적',cost:1600,weapon:'dagger',
    hp:95, dmg:1.05,spd:1.12,crit:0.15, blurb:'단검 난사와 높은 치명타. 속도·크리 특화.',
    trait:'그림자 회피 — 15% 확률로 피해 무시'},
+  {id:'necro', tile:87, name:'사령술사', cost:2000, weapon:'spirit',
+   hp:88, dmg:1.05,spd:1.0, blurb:'원혼 정령을 부리는 망자의 주인. 소환 특화.',
+   trait:'영혼 수확 — 정령 피해 +20% · 처치 50마리당 정령 +1 (최대 +2)'},
 ];
 const CHAR=id=>CHARS.find(c=>c.id===id);
 
@@ -689,6 +692,7 @@ function recomputeStats(p){
   // passives
   for(const id in p.passives){const lv=p.passives[id];for(let i=0;i<lv;i++)PASSIVES[id].apply(p);}
   p.dmgMul*=Math.pow(1.03,p.awaken||0); // 전투 각성: 패시브 포함 전체에 승산 (가산 패시브에 희석 방지)
+  if(ct('penance')){p.dmgMul*=1.2;p.regen=0;} // 고행의 계약: 회복 포기 → 화력
   p.moveSpd=136*p.spdMul;
   p.hp=Math.min(p.hp,p.maxHp);
 }
@@ -705,6 +709,7 @@ function startRun(charId,opts){
   G.selChar=charId; G.state='playing'; G.time=0; G.kills=0; G.goldRun=0;
   G.abyss=false;G.abyssBossT=0;G.abyssBossN=0;
   G.curse=opts.curse||0; G.daily=!!opts.daily;
+  G.contracts=opts.contracts||{}; // 저주 계약 (판 단위 소모형)
   G.dailyDate=G.daily?(opts.seed||todayStr()):''; G.dailyForfeit=false; // 시드 날짜 보관 — 자정 크로스오버 방지
   RNG=G.daily?mulberry32(hashStr('ds-'+opts.seed)):Math.random; // 데일리: 날짜 시드
   G.enemies.length=0;G.projs.length=0;G.gems.length=0;G.pickups.length=0;G.orbitals.length=0;
@@ -734,6 +739,13 @@ function difficulty(){ const m=G.time/60; let d=1+m*0.5+m*m*0.09;
   if(G.time>840)d*=1+(G.time-840)/60*0.12; // 심연(14분+): 분당 +12% 승산 램프 — 자연 종결점 형성
   return d; }
 const curseHp=()=>1+0.25*(G.curse||0), curseDmg=()=>1+0.15*(G.curse||0); // 저주: HP/피해 분리 배율
+const ct=k=>!!(G.contracts&&G.contracts[k]); // 저주 계약 활성 여부
+/* 계약 정의: 500G 소모, 1판 적용 — 상점 완매 후의 무한 골드 싱크 */
+const CONTRACTS=[
+  {id:'blood',  icon:'🩸', name:'피의 계약',   cost:500, desc:'정예 2배 출현 · 정예 골드 2배'},
+  {id:'penance',icon:'⛓', name:'고행의 계약', cost:500, desc:'하트·재생 무효 (하트→금화) · 피해 +20%'},
+  {id:'duel',   icon:'⚔', name:'결전의 계약', cost:500, desc:'보스 HP +50% · 보스 상자 2개'},
+];
 function enemyBudget(){ return 24+Math.floor(G.time*1.0); }
 
 function spawnEnemy(typeKey,forceX,forceY,elite){
@@ -750,7 +762,7 @@ function spawnEnemy(typeKey,forceX,forceY,elite){
     dmg:base.dmg*(0.6+d*0.42)*curseDmg()*(elite?1.5:1), xp:base.xp*(elite?8:1),
     flash:0, atkCd:0, bob:rand(TAU), flip:false, scale:(elite?1.7:1)*(base.scale||1),
     knock:{x:0,y:0}, elite:!!elite, boss:false, name:null, slow:0, hcd:{},
-    goldDrop:elite?randi(3,6):(RNG()<0.2?1:0),
+    goldDrop:elite?randi(3,6)*(ct('blood')?2:1):(RNG()<0.2?1:0),
     affix:null, flee:false, ttl:0,
   };
   if(elite){ // 엘리트 랜덤 어픽스
@@ -787,7 +799,7 @@ function spawnBoss(key){
   const a=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.6+80;
   const e={uid:uidc++,type:key,tile:b.tile,tint:b.tint,ta:0.5,
     x:p.x+Math.cos(a)*rad,y:p.y+Math.sin(a)*rad,vx:0,vy:0,r:b.r,spd:b.spd,
-    hp:b.hp*(1+G.time/60*0.25)*curseHp(),maxHp:b.hp*(1+G.time/60*0.25)*curseHp(),dmg:b.dmg*(0.8+G.time/60*0.15)*curseDmg(),xp:b.xp,
+    hp:b.hp*(1+G.time/60*0.25)*curseHp()*(ct('duel')?1.5:1),maxHp:b.hp*(1+G.time/60*0.25)*curseHp()*(ct('duel')?1.5:1),dmg:b.dmg*(0.8+G.time/60*0.15)*curseDmg(),xp:b.xp,
     flash:0,atkCd:0,bob:rand(TAU),flip:false,scale:b.scale,knock:{x:0,y:0},
     elite:true,boss:true,name:b.name,slow:0,hcd:{},goldDrop:key==='demon'?200:randi(20,40),final:key==='demon'};
   G.enemies.push(e);G.bossActive=e;
@@ -823,7 +835,7 @@ function updateSpawns(dt){
   }
   // elite occasionally
   G.difT-=dt;
-  if(G.difT<=0){G.difT=rand(22,34); if(G.time>50){const el=spawnEnemy(pick(availableEnemies()),undefined,undefined,true);
+  if(G.difT<=0){G.difT=rand(22,34)*(ct('blood')?0.5:1); if(G.time>50){const el=spawnEnemy(pick(availableEnemies()),undefined,undefined,true);
     const an={swift:'질주',split:'분열',burst:'폭발'}[el.affix];if(an)UI.toast('⚔ 정예 출현 — '+an+' 특성!');}}
   // 이벤트 웨이브
   G.eventT-=dt;
@@ -982,11 +994,12 @@ function updatePersistent(p,dt){
     }
     else if(w.id==='spirit'){
       const def=WEAPONS.spirit,lv=w.lv;
-      const cnt=(1+(lv>=4?1:0)+(lv>=7?1:0)+Math.floor(p.projAdd/2))*(w.evo?2:1);
+      const necroN=p.char.id==='necro'?Math.min(2,Math.floor(G.kills/50)):0; // 영혼 수확: 킬로 정령 증원
+      const cnt=(1+(lv>=4?1:0)+(lv>=7?1:0)+Math.floor(p.projAdd/2)+necroN)*(w.evo?2:1);
       if(!w.pets)w.pets=[];
       while(w.pets.length<cnt)w.pets.push({x:p.x+rand(-24,24),y:p.y+rand(-24,24),vx:0,vy:0,bob:rand(TAU)});
       while(w.pets.length>cnt)w.pets.pop();
-      const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1);
+      const dmg=wStat(def,'dmg',lv)*dmgMulOf(p)*(w.evo?2:1)*(p.char.id==='necro'?1.2:1); // 사령술사: 정령 피해 +20%
       const acc=w.evo?1600:1000, maxSp=w.evo?360:265;
       for(let i=0;i<w.pets.length;i++){const pet=w.pets[i];pet.bob+=dt*9;
         let tgt=nearestEnemy(pet.x,pet.y,430);
@@ -1062,6 +1075,7 @@ function killEnemy(e){
   if(e.flee)G.pickups.push(makePickup(e.x,e.y,'magnet')); // 보물 고블린 보너스
   if(e.boss){
     G.pickups.push(makePickup(e.x,e.y,'chest'));
+    if(ct('duel'))G.pickups.push(makePickup(e.x+18,e.y,'chest')); // 결전의 계약: 상자 2개
     if(e.final){G.wonBoss=true;}
     G.bossActive=(G.bossActive===e)?null:G.bossActive;
     Sound.boom();
@@ -1389,7 +1403,9 @@ function collectPickup(p,k){
       const base=(1+Math.floor(difficulty()/8)+(RNG()<0.2?1:0))*p.goldMul;
       G.goldF=(G.goldF||0)+base;const g=Math.floor(G.goldF);G.goldF-=g;
       G.goldRun+=g;FX.text(k.x,k.y,'+'+g+'G','#ffcf5c',13);Sound.coin();break;}
-    case 'heart':{p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.3);FX.text(p.x,p.y-p.r,'+HP','#8bef9c',15);FX.spark(k.x,k.y,'#8bef9c',10,120,0.4,3);Sound.pick();break;}
+    case 'heart':{
+      if(ct('penance')){G.goldRun+=30;FX.text(k.x,k.y,'⛓ +30G','#ffcf5c',13);Sound.coin();break;} // 고행: 회복 대신 금화
+      p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.3);FX.text(p.x,p.y-p.r,'+HP','#8bef9c',15);FX.spark(k.x,k.y,'#8bef9c',10,120,0.4,3);Sound.pick();break;}
     case 'magnet':{p.magnetT=2.5;UI.toast('🧲 자석!');Sound.pick();break;}
     case 'bomb':{FX.ring(p.x,p.y,'#ffce54',10,Math.max(innerWidth,innerHeight),0.5);G.shake=12;Sound.boom();
       for(const e of [...G.enemies])if(!e.boss)damageEnemy(e,e.maxHp,false,null,'#ffce54','bomb');else damageEnemy(e,e.maxHp*0.12,false,null,'#ffce54','bomb');
@@ -1533,7 +1549,7 @@ function unlockAch(id){ if(!META.ach)META.ach={}; if(META.ach[id])return;
 function submitScore(win){
   const s={nick:(META.nick||'용사').slice(0,12),time:Math.round(G.time),kills:G.kills,
     level:G.player.level,char:G.player.char.name,win:!!win,at:Date.now(),
-    abyss:!!G.abyss,curse:G.curse||0,daily:!!G.daily};
+    abyss:!!G.abyss,curse:G.curse||0,daily:!!G.daily,date:G.daily?(G.dailyDate||''):''};
   META.scores=(META.scores||[]);META.scores.push(s);
   META.scores.sort((a,b)=>(b.win-a.win)||((b.curse||0)-(a.curse||0))||(b.time-a.time)||(b.kills-a.kills)||(b.level-a.level));META.scores=META.scores.slice(0,10); // 저주·심연 생존이 새 경쟁 축
   saveMeta();
@@ -2013,7 +2029,7 @@ const UI={
     const done=id=>META.ach&&META.ach[id];
     const cnt=ACHS.filter(a=>done(a.id)).length;
     overlay.innerHTML=`<div class="panel fade"><h2 class="sec">업적 ${cnt}/${ACHS.length}</h2>
-      <div style="display:flex;flex-direction:column;gap:7px;width:100%">${ACHS.map(a=>`
+      <div style="display:flex;flex-direction:column;gap:7px;width:100%;max-height:56vh;overflow-y:auto;padding-right:4px">${ACHS.map(a=>`
         <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:${done(a.id)?'linear-gradient(90deg,#2c2347,#1c1631)':'#171025'};box-shadow:inset 0 0 0 1px ${done(a.id)?'#ffcf5c44':'#ffffff10'};${done(a.id)?'':'opacity:.55'}">
           <span style="font-size:17px">${done(a.id)?'🏆':'🔒'}</span>
           <div style="flex:1;text-align:left"><div style="font-size:13px;font-weight:700">${a.name}</div>
@@ -2040,19 +2056,29 @@ const UI={
       </div>
       <div style="width:100%;text-align:left;font-size:11px;color:var(--dim);letter-spacing:2px">내 기록 TOP 10</div>
       <div style="display:flex;flex-direction:column;gap:5px;width:100%">${localRows}</div>
-      <div style="width:100%;text-align:left;font-size:11px;color:var(--dim);letter-spacing:2px;margin-top:6px">서버 순위 TOP 10</div>
+      <div class="row" style="gap:6px;margin-top:6px">
+        <button class="btn ghost sm" id="tabAll" style="${UI.boardTab!=='daily'?'box-shadow:inset 0 0 0 1px #ffcf5c88':''}">🌍 서버 전체</button>
+        <button class="btn ghost sm" id="tabDaily" style="${UI.boardTab==='daily'?'box-shadow:inset 0 0 0 1px #8be9ff88':''}">📅 오늘의 도전</button>
+      </div>
       <div id="srvBoard" style="display:flex;flex-direction:column;gap:5px;width:100%"><div class="hint">불러오는 중…</div></div>
       <button class="btn ghost sm" id="boardBack">돌아가기</button></div>`;
     document.getElementById('nickSave').onclick=()=>{META.nick=document.getElementById('nickIn').value.trim().slice(0,12);saveMeta();UI.toast('닉네임 저장: '+(META.nick||'용사'));};
     document.getElementById('boardBack').onclick=()=>this.title();
-    fetch('/ds/scores').then(r=>r.ok?r.json():Promise.reject())
+    document.getElementById('tabAll').onclick=()=>{UI.boardTab='all';this.board();};
+    document.getElementById('tabDaily').onclick=()=>{UI.boardTab='daily';this.board();};
+    const daily=UI.boardTab==='daily';
+    const url=daily?('/ds/scores?daily='+todayStr()):'/ds/scores';
+    fetch(url).then(r=>r.ok?r.json():Promise.reject())
       .then(list=>{const el=document.getElementById('srvBoard');if(!el)return;
         // 서버 응답 화이트리스트 강제 변환 — 검증 없는 POST 경유 저장형 XSS·오염 데이터 차단
         const safe=(Array.isArray(list)?list:[]).slice(0,10).map(s=>({nick:String((s&&s.nick)||'용사').slice(0,12),
           char:String((s&&s.char)||'').slice(0,16),time:clamp(Math.floor(Number(s&&s.time)||0),0,86400),
           kills:Math.max(0,Math.floor(Number(s&&s.kills)||0)),win:!!(s&&s.win),
           curse:clamp(Math.floor(Number(s&&s.curse)||0),0,10),abyss:!!(s&&s.abyss),daily:!!(s&&s.daily)}));
-        el.innerHTML=safe.length?safe.map((s,i)=>row(i+1,s)).join(''):'<div class="hint">아직 서버 기록이 없습니다</div>';})
+        const mine=daily&&META.dailyBest&&META.dailyBest.date===todayStr()?
+          `<div class="hint" style="color:#8be9ff">내 오늘 기록: ${fmtTime(META.dailyBest.time)} · ${META.dailyBest.kills}킬</div>`:'';
+        el.innerHTML=mine+(safe.length?safe.map((s,i)=>row(i+1,s)).join(''):
+          `<div class="hint">${daily?'오늘의 도전 서버 기록이 아직 없습니다':'아직 서버 기록이 없습니다'}</div>`);})
       .catch(()=>{const el=document.getElementById('srvBoard');if(el)el.innerHTML='<div class="hint">서버 순위는 게임천국 서버로 접속했을 때만 표시됩니다</div>';});
   },
   /* ---------- 무기별 딜량 통계 ---------- */
@@ -2104,6 +2130,7 @@ const UI={
     G.state='charselect';this.overlay(true);
     let sel=CHARS.find(c=>META.unlocked[c.id])?.id||'mage', pendingUnlock=null;
     const maxCurse=Math.min(10,META.clearCount||0);
+    UI.contractSel=UI.contractSel||{};
     const render=()=>{
       const curseRow=maxCurse>0?`<div class="row" style="align-items:center;gap:8px;background:#1a0f18;border-radius:12px;padding:7px 12px;box-shadow:inset 0 0 0 1px #ff6b7a33">
           <button class="btn ghost sm" id="curseDn" style="padding:4px 12px">−</button>
@@ -2112,12 +2139,19 @@ const UI={
             <span style="font-size:10.5px;color:var(--dim)">${UI.curseSel?`적 HP+${25*UI.curseSel}% · 피해+${15*UI.curseSel}% · 💰+${20*UI.curseSel}%`:'클리어 횟수만큼 단계 해금'}</span></div>
           <button class="btn ghost sm" id="curseUp" style="padding:4px 12px">＋</button>
         </div>`:'';
+      const contractRow=(META.clearCount||0)>0?`<div class="row" style="gap:6px;flex-wrap:wrap;justify-content:center">
+          ${CONTRACTS.map(c=>`<button class="btn ghost sm contractBtn" data-c="${c.id}" title="${c.desc}"
+            style="font-size:11px;padding:6px 10px;${UI.contractSel[c.id]?'box-shadow:inset 0 0 0 1px #ffcf5c99,0 0 8px #ffcf5c44':''}">
+            ${c.icon} ${c.name} <span style="color:var(--gold)">${c.cost}G</span></button>`).join('')}
+        </div>
+        <div class="hint" id="contractHint" style="font-size:10.5px;min-height:14px">${Object.keys(UI.contractSel).filter(k=>UI.contractSel[k]).map(k=>CONTRACTS.find(c=>c.id===k).desc).join(' · ')||'저주 계약: 1판 소모 · 위험을 사면 보상이 따른다'}</div>`:'';
       overlay.innerHTML=`<div class="panel fade">
         <h2 class="sec">캐릭터 선택</h2>
         <div class="goldpill"><span class="c"></span> <b>${META.gold}</b></div>
         <div class="grid" id="charGrid"></div>
         <div class="tag" id="charBlurb" style="min-height:38px"></div>
         ${curseRow}
+        ${contractRow}
         <div class="row">
           <button class="btn gold" id="startBtn">시작 ▶</button>
           <button class="btn ghost sm" id="backBtn">뒤로</button>
@@ -2127,6 +2161,8 @@ const UI={
         document.getElementById('curseDn').onclick=()=>{UI.curseSel=Math.max(0,UI.curseSel-1);Sound.pick();render();};
         document.getElementById('curseUp').onclick=()=>{UI.curseSel=Math.min(maxCurse,UI.curseSel+1);Sound.pick();render();};
       }
+      document.querySelectorAll('.contractBtn').forEach(b=>{b.onclick=()=>{
+        const id=b.dataset.c;UI.contractSel[id]=!UI.contractSel[id];Sound.pick();render();};});
       const grid=document.getElementById('charGrid');
       for(const c of CHARS){
         const unlocked=!!META.unlocked[c.id];
@@ -2148,7 +2184,14 @@ const UI={
       }
       const c=CHAR(sel);document.getElementById('charBlurb').innerHTML=
         `<b style="color:#fff">${c.name}</b> — ${c.blurb}<br><span style="color:#8be9ff">시작 무기: ${WEAPONS[c.weapon].name}</span><br><span style="color:#ffcf5c">✨ ${c.trait}</span>`;
-      document.getElementById('startBtn').onclick=()=>{if(META.unlocked[sel])startRun(sel,{curse:UI.curseSel||0});else UI.toast('먼저 해금하세요');};
+      document.getElementById('startBtn').onclick=()=>{
+        if(!META.unlocked[sel]){UI.toast('먼저 해금하세요');return;}
+        const picked=CONTRACTS.filter(c=>UI.contractSel[c.id]);
+        const cost=picked.reduce((a,c)=>a+c.cost,0);
+        if(cost>0&&META.gold<cost){Sound.hurt();UI.toast('계약 골드 부족 ('+cost+'G 필요)');return;}
+        if(cost>0){META.gold-=cost;saveMeta();UI.toast('📜 계약 체결 — '+picked.map(c=>c.name).join('·')+' (-'+cost+'G)');}
+        const contracts={};picked.forEach(c=>contracts[c.id]=true);
+        startRun(sel,{curse:UI.curseSel||0,contracts});};
       document.getElementById('backBtn').onclick=()=>this.title();
     };
     render();

@@ -423,10 +423,13 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
   '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
 };
-// ---- 던전 서바이버즈 리더보드 (파일 영속) ----
+// ---- 던전 서바이버즈 리더보드 (파일 영속, 전체 + 날짜별 데일리) ----
 const DS_SCORE_FILE = path.join(__dirname, 'ds-scores.json');
-let dsScores = [];
-try { dsScores = JSON.parse(fs.readFileSync(DS_SCORE_FILE, 'utf8')); if (!Array.isArray(dsScores)) dsScores = []; } catch (e) {}
+let dsScores = [], dsDaily = {};
+try { const raw = JSON.parse(fs.readFileSync(DS_SCORE_FILE, 'utf8'));
+  if (Array.isArray(raw)) dsScores = raw;                       // 구버전 포맷 호환
+  else if (raw && typeof raw === 'object'){ dsScores = Array.isArray(raw.all) ? raw.all : []; dsDaily = raw.daily && typeof raw.daily === 'object' ? raw.daily : {}; }
+} catch (e) {}
 
 const server = http.createServer((req, res) => {
   let rel = decodeURIComponent(req.url.split('?')[0]);
@@ -436,24 +439,37 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ players, bots: snakes.length - players }));
     return;
   }
-  if (rel === '/ds/scores'){ // 던전 서바이버즈 순위
+  if (rel === '/ds/scores'){ // 던전 서바이버즈 순위 (전체 + 날짜별 데일리 보드)
     const HDR = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' };
     if (req.method === 'POST'){
       let body = '';
       req.on('data', c => { body += c; if (body.length > 2048) req.destroy(); });
       req.on('end', () => { try {
         const s = JSON.parse(body);
-        const entry = { nick: String(s.nick || '용사').slice(0, 12), time: Math.min(3600, Math.max(0, Math.round(+s.time || 0))),
+        const entry = { nick: String(s.nick || '용사').slice(0, 12), time: Math.min(7200, Math.max(0, Math.round(+s.time || 0))),
           kills: Math.min(99999, Math.max(0, (+s.kills | 0))), level: Math.min(999, Math.max(0, (+s.level | 0))),
-          char: String(s.char || '').slice(0, 10), win: !!s.win, at: Date.now() };
-        dsScores.push(entry);
-        dsScores.sort((a, b) => (b.win - a.win) || (b.time - a.time));
-        dsScores = dsScores.slice(0, 50);
-        try { fs.writeFileSync(DS_SCORE_FILE, JSON.stringify(dsScores)); } catch (e) {}
-        res.writeHead(200, HDR); res.end(JSON.stringify({ ok: true, rank: dsScores.indexOf(entry) + 1 }));
+          char: String(s.char || '').slice(0, 10), win: !!s.win, at: Date.now(),
+          curse: Math.min(10, Math.max(0, (+s.curse | 0))), abyss: !!s.abyss,
+          daily: !!s.daily, date: /^\d{4}-\d{2}-\d{2}$/.test(String(s.date)) ? String(s.date) : '' };
+        if (entry.daily && entry.date){ // 데일리: 날짜별 보드, 최근 3일만 유지
+          if (!dsDaily[entry.date]) dsDaily[entry.date] = [];
+          dsDaily[entry.date].push(entry);
+          dsDaily[entry.date].sort((a, b) => (b.win - a.win) || (b.time - a.time) || (b.kills - a.kills));
+          dsDaily[entry.date] = dsDaily[entry.date].slice(0, 20);
+          for (const d of Object.keys(dsDaily).sort().reverse().slice(3)) delete dsDaily[d];
+        } else {
+          dsScores.push(entry);
+          dsScores.sort((a, b) => (b.win - a.win) || ((b.curse || 0) - (a.curse || 0)) || (b.time - a.time) || (b.kills - a.kills));
+          dsScores = dsScores.slice(0, 50);
+        }
+        try { fs.writeFileSync(DS_SCORE_FILE, JSON.stringify({ all: dsScores, daily: dsDaily })); } catch (e) {}
+        res.writeHead(200, HDR); res.end('{"ok":true}');
       } catch (e) { res.writeHead(400, HDR); res.end('{"ok":false}'); } });
       return;
     }
+    const qs = req.url.split('?')[1] || '';
+    const dm = /(?:^|&)daily=(\d{4}-\d{2}-\d{2})/.exec(qs);
+    if (dm){ res.writeHead(200, HDR); res.end(JSON.stringify((dsDaily[dm[1]] || []).slice(0, 20))); return; }
     res.writeHead(200, HDR); res.end(JSON.stringify(dsScores.slice(0, 20)));
     return;
   }
