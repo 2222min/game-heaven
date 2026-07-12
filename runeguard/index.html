@@ -387,8 +387,11 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const dist2=(x1,y1,x2,y2)=>{const dx=x1-x2,dy=y1-y2;return dx*dx+dy*dy};
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(0)+'K':n>=1000?(n/1000).toFixed(1)+'K':Math.floor(n)+'';
 const TAU=Math.PI*2;
-const RG_VER='1.1.0'; // CHANGELOG.md의 runeguard 최신 버전과 일치 (.githooks/pre-commit이 검사)
+const RG_VER='1.2.0'; // CHANGELOG.md의 runeguard 최신 버전과 일치 (.githooks/pre-commit이 검사)
 const RG_NOTES=[
+ {v:'1.2.0',date:'7/12',title:'시너지 2.0 + 확률표',items:[
+   '🔗 시너지 최상위 티어가 "고유 행동" 해금 — 전사 방벽 충격파·마법사 비전 폭발·궁수 일제사격·성기사 수호 결계(한계+6)·도적 맹독 출혈',
+   '📊 확률표 실시간 반영 — 명성·정예징집으로 오른 확률이 빨간색 ▲%p로 표시']},
  {v:'1.1.0',date:'7/12',title:'전투 심화 + 가챠 손맛',items:[
    '🎯 타겟 우선순위 — 선두/약체/강체/보스, 원터치로 전 용병 조준 전환',
    '🏹 직업 지정 소집 (30G) — 이제 원하는 직업을 뽑아 시너지를 "설계"',
@@ -581,28 +584,50 @@ CHARS.forEach(c=>CHARS_BY_GRADE[c.grade].push(c));
 
 /* ---- 직업 시너지 (오토체스식) ---- */
 const SYN_DEF={
-  전사:  {icon:'⚔️', color:'#e8a726', tiers:[{n:3,atk:.20},{n:6,atk:.45}], eff:'전사 공격력'},
-  궁수:  {icon:'🏹', color:'#6fae5a', tiers:[{n:2,range:.18},{n:4,range:.35,aspd:.15}], eff:'궁수 사거리·공속'},
-  마법사:{icon:'🔮', color:'#c060ff', tiers:[{n:2,atk:.30},{n:4,atk:.65}], eff:'마법 피해'},
-  성기사:{icon:'🛡️', color:'#7ad0ff', tiers:[{n:2,team:.10},{n:4,team:.22}], eff:'전 아군 공격력'},
-  도적:  {icon:'🗡️', color:'#ff6a8a', tiers:[{n:2,aspd:.25},{n:4,aspd:.50}], eff:'도적 공속'},
+  전사:  {icon:'⚔️', color:'#e8a726', tiers:[{n:3,atk:.20},{n:6,atk:.45}], eff:'전사 공격력', flag:'bulwark', ability:'💥 방벽 충격파 — 주기적으로 적을 밀쳐냄'},
+  궁수:  {icon:'🏹', color:'#6fae5a', tiers:[{n:2,range:.18},{n:4,range:.35,aspd:.15}], eff:'궁수 사거리·공속', flag:'volley', ability:'🎯 일제 사격 — 선두에 주기적 화살비'},
+  마법사:{icon:'🔮', color:'#c060ff', tiers:[{n:2,atk:.30},{n:4,atk:.65}], eff:'마법 피해', flag:'nova', ability:'🌌 비전 폭발 — 광역 피해 + 둔화'},
+  성기사:{icon:'🛡️', color:'#7ad0ff', tiers:[{n:2,team:.10},{n:4,team:.22}], eff:'전 아군 공격력', flag:'aegis', ability:'🛡 수호 결계 — 성 한계치 +6'},
+  도적:  {icon:'🗡️', color:'#ff6a8a', tiers:[{n:2,aspd:.25},{n:4,aspd:.50}], eff:'도적 공속', flag:'venom', ability:'🩸 맹독 — 강한 적에게 출혈(최대HP 비례)'},
 };
 function computeSyn(){
   const cnt={}; S.units.forEach(u=>{ cnt[u.cls]=(cnt[u.cls]||0)+1; });
   const syn={atk:{},aspd:{},range:{},team:1,active:[]};
+  const flags={};
   for(const cls in SYN_DEF){
-    const c=cnt[cls]||0; let tier=null,ti=-1;
-    SYN_DEF[cls].tiers.forEach((t,i)=>{ if(c>=t.n){ tier=t; ti=i; } });
+    const def=SYN_DEF[cls], c=cnt[cls]||0; let tier=null,ti=-1;
+    def.tiers.forEach((t,i)=>{ if(c>=t.n){ tier=t; ti=i; } });
     if(tier){
       if(tier.atk) syn.atk[cls]=1+tier.atk;
       if(tier.aspd) syn.aspd[cls]=1+tier.aspd;
       if(tier.range) syn.range[cls]=1+tier.range;
       if(tier.team) syn.team*=1+tier.team;
+      if(ti===def.tiers.length-1 && def.flag) flags[def.flag]=true; // 최상위 티어 = 고유 행동 해금 (시너지 2.0)
     }
     if(c>0) syn.active.push({cls,c,ti,tier});
   }
-  S.syn=syn;
+  S.syn=syn; S.synFlags=flags;
 }
+/* 시너지 2.0 — 최상위 티어 고유 행동 (전역 주기 효과, 전투 브랜치 비침습) */
+function synFrontMob(){ let best=null,bd=-1; for(const m of S.mobs){ if(m.alive&&m.d>0&&m.d>bd){bd=m.d;best=m;} } return best; }
+function synAoE(x,y,r,dmg,color,opt){ opt=opt||{};
+  S.fx.push({t:'ring',x,y,r0:r*.3,r1:r,life:.28,max:.28,color});
+  const r2=r*r; S.mobs.forEach(m=>{ if(!m.alive||m.d<=0||dist2(x,y,m.x,m.y)>r2) return;
+    m.damage(dmg,{crit:false});
+    if(opt.slow&&m.alive){ m.slowT=Math.max(m.slowT,opt.slow.t); m.slowF=Math.min(m.slowF||1,opt.slow.f); }
+    if(opt.knock&&m.alive){ m.d=Math.max(0,m.d-opt.knock*(m.boss?.35:1)); }
+  });
+}
+function synergyTick(dt){
+  const f=S.synFlags; if(!f) return; const T=S.synT, base=mobHP(S.round);
+  if(f.nova){ T.nova-=dt; if(T.nova<=0){ T.nova=3.0; const c=synFrontMob(); if(c){ synAoE(c.x,c.y,130,base*0.9,'#c060ff',{slow:{f:.6,t:1.3}}); } } }
+  if(f.bulwark){ T.bw-=dt; if(T.bw<=0){ T.bw=3.2; const c=synFrontMob(); if(c){ synAoE(c.x,c.y,115,base*0.5,'#e8a726',{knock:70}); addShake(2); } } }
+  if(f.volley){ T.vl-=dt; if(T.vl<=0){ T.vl=2.6; const c=synFrontMob(); if(c){ synAoE(c.x,c.y,95,base*0.7,'#6fae5a'); } } }
+  if(f.venom){ T.vn-=dt; if(T.vn<=0){ T.vn=2.2;
+    S.mobs.filter(m=>m.alive&&m.d>0).sort((a,b)=>b.hp-a.hp).slice(0,3).forEach(m=>{
+      m.burnT=Math.max(m.burnT,3); m.burnDps=Math.max(m.burnDps, m.maxhp*0.02); }); } }
+}
+function effMobLimit(){ return S.mobLimit + ((S.synFlags&&S.synFlags.aegis)?6:0); }
 
 /* 보스 몬스터 */
 const BOSSES=[
@@ -1176,10 +1201,15 @@ function consumeVictims(mode){
 /* =========================================================================
    시스템 — 소환/합성/승급/판매/강화/상점
    ========================================================================= */
-function rollGrade(){
-  let luck=0.03*metaLv('luck')+((S.relicFlags&&S.relicFlags.eliteSummon)?0.14:0);
+/* 현재 실효 등급 확률 (명성·정예징집 반영) — 확률표·롤 공용 */
+function gradeProbs(){
+  const luck=0.03*metaLv('luck')+((S.relicFlags&&S.relicFlags.eliteSummon)?0.14:0);
   const p=GRADES.map(g=>g.prob);
-  if(luck>0){ const mv=Math.min(p[0],luck); p[0]-=mv; p[1]+=mv*0.35; p[2]+=mv*0.45; p[3]+=mv*0.15; p[4]+=mv*0.05; } // 명성·정예징집이 영웅(3)·전설(4) 확률도 실제 상승 (이전엔 고급·희귀만 올라 투자 체감 0)
+  if(luck>0){ const mv=Math.min(p[0],luck); p[0]-=mv; p[1]+=mv*0.35; p[2]+=mv*0.45; p[3]+=mv*0.15; p[4]+=mv*0.05; } // 명성·정예징집이 영웅(3)·전설(4) 확률도 실제 상승
+  return p;
+}
+function rollGrade(){
+  const p=gradeProbs();
   const x=Math.random(); let acc=0, g=0;
   for(let i=0;i<p.length;i++){ acc+=p[i]; if(x<acc){ g=i; break; } }
   // 피티 천장: 연속 꽝이 쌓이면 상위 등급 확정 (가챠 실망 상한)
@@ -1407,7 +1437,7 @@ function stepRound(dt){
   }
   // 몹 한계
   const alive=S.mobs.filter(m=>m.alive).length;
-  if(alive>=S.mobLimit){ loseGame(`몬스터가 ${S.mobLimit}마리를 넘었습니다`); }
+  if(alive>=effMobLimit()){ loseGame(`몬스터가 ${effMobLimit()}마리를 넘었습니다`); }
 }
 
 /* =========================================================================
@@ -2191,7 +2221,7 @@ function render(){
   }
   /* 몹 한계 경고 */
   const alive=S.mobs.filter(m=>m.alive).length;
-  if(alive>=S.mobLimit*.72&&S.phase==='play'){
+  if(alive>=effMobLimit()*.72&&S.phase==='play'){
     ctx.globalAlpha=.14+.1*Math.sin(S.time*7);
     ctx.fillStyle='#ff2222'; ctx.fillRect(0,0,FW,FH);
     ctx.globalAlpha=1;
@@ -2228,11 +2258,20 @@ function log(html){
   UI.log.appendChild(d);
   while(UI.log.children.length>7) UI.log.removeChild(UI.log.firstChild);
 }
-GRADES.forEach(gr=>{
-  const s=document.createElement('span');
-  s.style.color=gr.color; s.textContent=`${gr.name} ${(gr.prob*100).toFixed(gr.prob<.01?1:0)}%`;
-  UI.probs.appendChild(s);
-});
+function renderProbs(){
+  const p=gradeProbs();
+  UI.probs.innerHTML='';
+  GRADES.forEach((gr,i)=>{
+    const s=document.createElement('span'); s.style.color=gr.color;
+    const cur=p[i]*100, up=(p[i]-gr.prob)*100, dec=cur<1?1:0;
+    let html=`${gr.name} ${cur.toFixed(dec)}%`;
+    if(up>0.04) html+=`<br><span style="color:#ff5567;font-size:9px;font-weight:900">▲${up.toFixed(up<1?2:1)}%p</span>`; // 명성·정예징집 상승분
+    else if(up<-0.04) html+=`<br><span style="color:#6d8a5a;font-size:9px;font-weight:800">▼${(-up).toFixed(1)}%p</span>`;
+    s.innerHTML=html;
+    UI.probs.appendChild(s);
+  });
+}
+// 최초 렌더는 META 초기화 이후(하단 init)에서 호출 — 여기서 부르면 TDZ
 function select(u){ S.sel=u; S.selGroup=u?[u]:[]; refreshCard(); }
 function refreshCard(){
   const u=S.sel;
@@ -2257,11 +2296,12 @@ function updateUI(){
   UI.nextBar.style.width=(100*S.roundT/S.roundDur)+'%';
   UI.nextTxt.textContent=Math.ceil(remain)+'s';
   const alive=S.mobs.filter(m=>m.alive).length;
-  const mk=alive/S.mobLimit;
+  const lim=effMobLimit();
+  const mk=alive/lim;
   UI.mobG.style.width=(mk*100)+'%';
   UI.mobG.style.background=mk>.72?'linear-gradient(90deg,#c62828,#ff5252)':mk>.45?'linear-gradient(90deg,#b8860b,#ffca4d)':'linear-gradient(90deg,#2e9e5b,#7ad98a)';
   UI.mobG.parentElement.classList.toggle('danger',mk>.72);
-  UI.mobT.textContent=`몬스터 ${alive} / ${S.mobLimit}`;
+  UI.mobT.textContent=`몬스터 ${alive} / ${lim}`+((S.synFlags&&S.synFlags.aegis)?' 🛡':'');
   UI.gold.textContent=Math.floor(S.gold);
   UI.gem.textContent=S.gems;
   UI.dps.textContent=fmt(S.units.reduce((a,u)=>a+u.dps(),0));
@@ -2414,7 +2454,8 @@ function resetState(){
   S.roundT=0; S.spawnQ=[]; S.boss=null; S.finalT=0; S.kills=0; S.summons=0; S.time=0;
   S.speed=1; S.paused=false; S.sel=null; S.selGroup=[]; S.roundSpawned=0;
   S.pity={r:0,h:0,l:0}; // 피티는 판 단위 (이월 없음)
-  renderTargetBar&&renderTargetBar();
+  S.synFlags={}; S.synT={nova:0,bw:0,vl:0,vn:0}; // 시너지 2.0 주기 타이머
+  renderTargetBar&&renderTargetBar(); renderProbs&&renderProbs();
   ['sp1','sp2','sp3'].forEach((k,i)=>$(k).classList.toggle('speedOn',i===0));
   $('pauseBtn').textContent='⏸';
   const chip=$('diffChip');
@@ -2520,14 +2561,17 @@ function renderSyn(){
   const act=(S.syn.active||[]).slice().sort((a,b)=>(b.ti-a.ti)||(b.c-a.c));
   if(!act.length){ el.innerHTML='<div style="font-size:11px;color:#6d5f42;text-align:center;padding:4px 0">용병을 소집하면 시너지가 활성화됩니다</div>'; return; }
   el.innerHTML=act.map(a=>{ const d=SYN_DEF[a.cls], on=a.ti>=0, nextN=d.tiers.find(t=>a.c<t.n);
+    const top=a.ti===d.tiers.length-1; // 최상위 = 고유 행동 발동 중
     let eff; if(on){ const t=d.tiers[a.ti], v=Math.round((t.atk||t.aspd||t.range||t.team)*100); eff=`<span style="color:#a8d868">${d.eff} +${v}%</span>`; }
     else eff=`<span style="color:#6d5f42">${nextN.n-a.c}명 더</span>`;
-    return `<div class="synrow ${on?'on':''}"><span class="sc" style="color:${d.color}">${d.icon} ${a.cls}</span><span class="sn">${a.c}${nextN?`/${nextN.n}`:''}</span><span class="se">${eff}</span></div>`;
+    const abil=top?`<div style="font-size:9.5px;color:#ffcf5a;margin-top:1px">${d.ability}</div>`:'';
+    return `<div class="synrow ${on?'on':''}"><div style="flex:1"><div style="display:flex;gap:6px"><span class="sc" style="color:${d.color}">${d.icon} ${a.cls}</span><span class="sn">${a.c}${nextN?`/${nextN.n}`:''}</span><span class="se" style="flex:1;text-align:right">${eff}</span></div>${abil}</div></div>`;
   }).join('');
 }
 function step(dt){
   if(S.phase!=='play') return;
   computeSyn();
+  synergyTick(dt); // 시너지 2.0 고유 행동
   S.time+=dt;
   stepRound(dt);
   if(S.phase!=='play') return;
@@ -2912,7 +2956,8 @@ function takeRelic(r){
   AudioSys.gradeup();
   if(r.once) r.once();
   if(r.flag) S.relicFlags[r.flag]=true;
-  S.relics.push(r); recalcMods(); renderHudRelics();
+  S.relics.push(r); recalcMods(); renderHudRelics(); renderProbs();
+  if(r.flag==='eliteSummon') toast('🎲 정예 징집 — 상위 등급 확률 상승! (확률표 확인)');
   $('relicScreen').style.display='none'; S.paused=false; S.relicOpen=false;
   log(`🔮 유물 획득 — <b style="color:#c8b6ff">${r.name}</b>`);
 }
@@ -2950,7 +2995,7 @@ $('notesBtn').onclick=()=>{ AudioSys.ui&&AudioSys.ui(); renderNotes(); try{META.
 $('notesBack').onclick=()=>{ $('notesScreen').style.display='none'; $('startScreen').style.display='flex'; };
 { const vl=$('verLabel'); if(vl) vl.textContent=RG_VER;
   if((META.seenNotes||'')!==RG_VER){ const b=$('notesBtn'); if(b){ b.innerHTML='📜 패치노트 <span style="position:absolute;top:5px;right:8px;width:7px;height:7px;border-radius:50%;background:#e8c86a;box-shadow:0 0 6px #e8c86a"></span>'; } } }
-recalcMods(); refreshStartRunes(); refreshAsc();
+recalcMods(); refreshStartRunes(); refreshAsc(); renderProbs(); // META 초기화 이후 최초 확률표
 
 /* 부트 — 아틀라스 픽셀 디코딩 완료 후 스프라이트 빌드 (data URI는 complete=true여도 래스터화 미완 가능) */
 function boot(){ if(window.__booted) return; window.__booted=true;
