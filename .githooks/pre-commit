@@ -1,0 +1,24 @@
+#!/bin/sh
+# 던전 서바이버즈 릴리스 규칙 강제 (활성화: git config core.hooksPath .githooks)
+staged=$(git diff --cached --name-only)
+
+if echo "$staged" | grep -q '^dungeon-survivors/'; then
+  # 1) 패치노트(CHANGELOG.md) 동반 필수
+  if ! echo "$staged" | grep -q '^CHANGELOG\.md$'; then
+    echo "✖ 커밋 거부: dungeon-survivors/ 변경에는 CHANGELOG.md 패치노트 갱신이 필요합니다." >&2
+    exit 1
+  fi
+  # 2) index.html 변경 시 sw.js 캐시 버전 범프 필수 (PWA 유저 갱신)
+  if echo "$staged" | grep -q '^dungeon-survivors/index\.html$' && ! echo "$staged" | grep -q '^dungeon-survivors/sw\.js$'; then
+    echo "✖ 커밋 거부: index.html 변경 시 sw.js의 캐시 버전(ds-vN)을 함께 범프하세요." >&2
+    exit 1
+  fi
+  # 3) 게임 내 GAME_VER == CHANGELOG 최신 버전 (게임 내 패치노트 동기화 강제)
+  ver_html=$(git show :dungeon-survivors/index.html | grep -o "GAME_VER='[0-9.]*'" | head -1 | grep -o '[0-9][0-9.]*')
+  ver_cl=$(git show :CHANGELOG.md | grep -o '^## v[0-9][0-9.]*' | head -1 | grep -o '[0-9][0-9.]*')
+  if [ -n "$ver_html" ] && [ "$ver_html" != "$ver_cl" ]; then
+    echo "✖ 커밋 거부: index.html GAME_VER(v$ver_html) ≠ CHANGELOG.md 최신(v$ver_cl) — 게임 내 PATCH_NOTES와 CHANGELOG를 함께 올리세요." >&2
+    exit 1
+  fi
+fi
+exit 0
