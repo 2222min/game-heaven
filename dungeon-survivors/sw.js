@@ -1,5 +1,5 @@
 // 던전 서바이버즈 PWA — 네트워크 우선, 오프라인 캐시 폴백
-const C = 'ds-v7';
+const C = 'ds-v8';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(C).then(c => c.addAll(['./'])).catch(() => {}));
   self.skipWaiting();

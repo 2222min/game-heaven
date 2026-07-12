@@ -176,9 +176,14 @@
    + procedural glow / lighting / particles. Mobile + Web. localStorage meta.
    ============================================================================ */
 
-const GAME_VER='1.6.0'; // CHANGELOG.md 최신 버전과 일치해야 함 (.githooks/pre-commit이 검사)
+const GAME_VER='1.7.0'; // CHANGELOG.md 최신 버전과 일치해야 함 (.githooks/pre-commit이 검사)
 /* 게임 내 패치노트 — 최신이 위. 유저 대상 문구로 작성 */
 const PATCH_NOTES=[
+ {v:'1.7.0',date:'7/12',title:'난이도 곡선 대개편',items:[
+   '⚖️ 장비를 갖춰도 후반이 쉬워지지 않도록 — 7분부터 서서히, 10분부터 확 조여옵니다',
+   '⚔ 후반 정예 러시 — 사방에서 몰려오는 정예 무리 (13분+)',
+   '🔥 마왕 격노 시 수하 소환 — 클리어 직전이 진짜 고비',
+   '📈 과도한 파워 폭주 억제 — 초반 난이도는 그대로, 강한 빌드만 조정']},
  {v:'1.6.0',date:'7/12',title:'패치노트가 생겼어요',items:[
    '📜 타이틀에 패치노트 버튼 — 새 소식이 있으면 ● 배지가 떠요']},
  {v:'1.5.0',date:'7/12',title:'독기의 지하수로',items:[
@@ -748,7 +753,7 @@ function recomputeStats(p){
   p.regen=0;
   // passives
   for(const id in p.passives){const lv=p.passives[id];for(let i=0;i<lv;i++)PASSIVES[id].apply(p);}
-  p.dmgMul*=Math.pow(1.03,p.awaken||0); // 전투 각성: 패시브 포함 전체에 승산 (가산 패시브에 희석 방지)
+  {const a=p.awaken||0; p.dmgMul*=a<=12?Math.pow(1.03,a):Math.pow(1.03,12)*(1+0.012*(a-12));} // 전투 각성: 12스택까지 복리 → 이후 선형 꼬리(+1.2%/스택). 지수 런어웨이 차단
   if(ct('penance')){p.dmgMul*=1.2;p.regen=0;} // 고행의 계약: 회복 포기 → 화력
   p.moveSpd=136*p.spdMul;
   p.hp=Math.min(p.hp,p.maxHp);
@@ -794,6 +799,7 @@ function startRun(charId,opts){
    ============================================================================ */
 // hp/dmg scale — quadratic late-game: fresh runs hit a wall ~5-6min, meta upgrades push the wall further
 function difficulty(){ const m=G.time/60; let d=1+m*0.5+m*m*0.09;
+  if(G.time>420)d*=1+(G.time-420)/60*0.03; // 7분+: 분당 +3% — 서서히 조여오는 후반 압박 (fresh 4.3분·mid 6.5분은 발동 전 종료 → 초반 불변)
   if(G.time>840)d*=1+(G.time-840)/60*0.12; // 심연(14분+): 분당 +12% 승산 램프 — 자연 종결점 형성
   return d; }
 const curseHp=()=>1+0.25*(G.curse||0), curseDmg=()=>1+0.15*(G.curse||0); // 저주: HP/피해 분리 배율
@@ -804,7 +810,7 @@ const CONTRACTS=[
   {id:'penance',icon:'⛓', name:'고행의 계약', cost:500, desc:'하트·재생 무효 (하트→금화) · 피해 +20%'},
   {id:'duel',   icon:'⚔', name:'결전의 계약', cost:500, desc:'보스 HP +50% · 보스 상자 2개'},
 ];
-function enemyBudget(){ return 24+Math.floor(G.time*1.0); }
+function enemyBudget(){ return 24+Math.floor(G.time*1.0)+(G.time>600?Math.floor((G.time-600)*0.6):0); } // 10분+ 밀도 램프: 순화된 빌드가 외곽을 다 못 치우게 → 누수 접촉 (12분 +72, 14분 +144)
 
 function spawnEnemy(typeKey,forceX,forceY,elite){
   const base=ENEMIES[typeKey];const p=G.player;
@@ -891,10 +897,17 @@ function updateSpawns(dt){
       for(let i=0;i<cnt;i++){const a=a0+i/cnt*TAU;spawnEnemy(pick(pool),p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad);} }
     else for(let i=0;i<cluster;i++)spawnEnemy(pick(pool));
   }
-  // elite occasionally
+  // elite occasionally — 10분+ 정예 증가·플레이어 포위 스폰, 13분+ '정예 러시'로 후반 접촉 압박
   G.difT-=dt;
-  if(G.difT<=0){G.difT=rand(22,34)*(ct('blood')?0.5:1); if(G.time>50){const el=spawnEnemy(pick(availableEnemies()),undefined,undefined,true);
-    const an={swift:'질주',split:'분열',burst:'폭발'}[el.affix];if(an)UI.toast('⚔ 정예 출현 — '+an+' 특성!');}}
+  if(G.difT<=0){
+    const en=G.time>=780?3:(G.time>=600?2:1), emul=G.time>=780?0.65:(G.time>=600?0.8:1);
+    G.difT=rand(22,34)*emul*(ct('blood')?0.5:1);
+    if(G.time>50){ let last=null;
+      for(let i=0;i<en;i++){ const a=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.6;
+        last=spawnEnemy(pick(availableEnemies()),p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad,true); }
+      if(en>=3)UI.toast('⚔ 정예 러시 — 사방에서 몰려온다!');
+      else{const an={swift:'질주',split:'분열',burst:'폭발'}[last&&last.affix];if(an)UI.toast('⚔ 정예 출현 — '+an+' 특성!');} }
+  }
   // 이벤트 웨이브
   G.eventT-=dt;
   if(G.eventT<=0){ G.eventT=rand(75,110);
@@ -1426,7 +1439,9 @@ function pickBossSkill(e,p){
         Sound.boom();G.shake=Math.max(G.shake,4);ai.t=5.2; }
       break;
     case 'demon':{
-      if(e.hp<e.maxHp*0.5&&!ai.enraged){ai.enraged=true;UI.toast('🔥 마왕 격노!');G.shake=Math.max(G.shake,8);Sound.boss();}
+      if(e.hp<e.maxHp*0.5&&!ai.enraged){ai.enraged=true;UI.toast('🔥 마왕 격노 — 수하들을 부른다!');G.shake=Math.max(G.shake,8);Sound.boss();
+        for(let i=0;i<3;i++){const a=rand(TAU),rad=Math.max(innerWidth,innerHeight)/CAM.scale*0.62; // 클리어 직전 절정: 사방 포위 정예 (탄막+포위 동시 압박)
+          spawnEnemy(pick(availableEnemies()),p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad,true);}}
       const ph2=!!ai.enraged, m3=ai.step%3;
       if(m3===0){ aim();ai.mode='dash';ai.cast=0.85;ai.dashLen=340;ai.dashSp=470; }
       else if(m3===1){ ai.chan=ph2?2.0:1.6;ai.rate=ph2?0.075:0.10;ai.acc=0;ai.psp=ph2?165:145;ai.turn=0.5;ai.arms=ph2?2:1; }
@@ -1506,7 +1521,7 @@ function openChest(p){
 /* ============================================================================
    XP / LEVEL UP
    ============================================================================ */
-function xpForLevel(lv){return Math.floor(5+lv*4+lv*lv*0.7);}
+function xpForLevel(lv){const soft=lv>50?4*(lv-50)*(lv-50):0;return Math.floor(5+lv*4+lv*lv*0.7+soft);} // lv50 초과 소프트캡: 원거리 오버레벨(→각성 축적) 억제
 function gainXp(p,v){
   p.xp+=v*p.xpMul;
   let leveled=0;
