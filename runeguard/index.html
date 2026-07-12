@@ -305,9 +305,18 @@
 
     <div class="box">
       <button id="summonBtn">🎲 용병 소집 <small id="summonCost">20 G · 자리 30</small></button>
+      <div style="display:flex;gap:5px;margin-top:7px" id="draftRow"></div>
+      <div style="font-size:9.5px;color:#5d5138;text-align:center;margin-top:3px">🎯 직업 지정 소집 (30G · 등급은 랜덤)</div>
       <div class="subbtns">
         <button id="upgBtn">⚔️ 공격력 강화 <small id="upgTxt">Lv.0 · 40 G</small></button>
         <button id="aspdBtn">⚡ 공속 강화 <small id="aspdTxt">+0% · 4 마나</small></button>
+      </div>
+      <div class="subbtns">
+        <button id="mergeAllBtn">🔗 전체 합류<small>합류 가능한 조합 자동</small></button>
+      </div>
+      <div style="display:flex;gap:5px;margin-top:8px;align-items:center">
+        <span style="font-size:10px;color:#a89878;font-weight:800;white-space:nowrap">🎯 타겟</span>
+        <div id="targetBar" style="display:flex;gap:4px;flex:1"></div>
       </div>
     </div>
 
@@ -378,8 +387,14 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const dist2=(x1,y1,x2,y2)=>{const dx=x1-x2,dy=y1-y2;return dx*dx+dy*dy};
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(0)+'K':n>=1000?(n/1000).toFixed(1)+'K':Math.floor(n)+'';
 const TAU=Math.PI*2;
-const RG_VER='1.0.0'; // CHANGELOG.md의 runeguard 최신 버전과 일치 (.githooks/pre-commit이 검사)
+const RG_VER='1.1.0'; // CHANGELOG.md의 runeguard 최신 버전과 일치 (.githooks/pre-commit이 검사)
 const RG_NOTES=[
+ {v:'1.1.0',date:'7/12',title:'전투 심화 + 가챠 손맛',items:[
+   '🎯 타겟 우선순위 — 선두/약체/강체/보스, 원터치로 전 용병 조준 전환',
+   '🏹 직업 지정 소집 (30G) — 이제 원하는 직업을 뽑아 시너지를 "설계"',
+   '🎰 피티 천장 — 연속 꽝이 쌓이면 상위 등급 확정 (소환 버튼에 남은 횟수 표시)',
+   '✨ 영웅·전설 소환 대박 연출 — 화면 플래시·슬로우·전설 배너',
+   '🔗 전체 합류 버튼 — 합류 가능한 조합을 한 번에 자동 정리']},
  {v:'1.0.0',date:'7/12',title:'고도화 시작 — 기반 정비',items:[
    '🏅 최고 기록이 처음으로 표시됩니다 — 시작 화면 난이도별 카드 + 신기록 강조',
    '🎯 종료 화면에 "다음 목표" 버튼 (재도전·상위 난이도·어센션 유도)',
@@ -682,7 +697,14 @@ const S={
   mobLimit:80, speed:1, paused:false, sel:null, selGroup:[], hoverBtn:null, shake:0, hitStop:0,
   syn:{atk:{},aspd:{},range:{},team:1,active:[]}, asc:0,
   boss:null, finalT:0, kills:0, summons:0, time:0, best:0, uid:0,
+  tmode:0, pity:{r:0,h:0,l:0},
 };
+const TMODES=[ // 타겟 우선순위 (전 용병 공통)
+  {k:'선두', icon:'🎯', cmp:(a,b)=>b.d-a.d},                    // 가장 오래 돈 몹 (기본)
+  {k:'약체', icon:'🩸', cmp:(a,b)=>a.hp-b.hp},                  // 최저 HP — 막타·처형
+  {k:'강체', icon:'💪', cmp:(a,b)=>b.hp-a.hp},                  // 최고 HP — 탱커·보스 집중
+  {k:'보스', icon:'☠', cmp:(a,b)=>((b.boss?1:0)-(a.boss?1:0))||(b.d-a.d)}, // 보스 우선
+];
 const ECON={summon:20, upgBase:40, upgGrow:1.15, upgPct:.15, upgMax:40,
   aspdCost:4, aspdPct:.06, aspdMax:8, legCost:6, mythCost:15};
 const mobHP=r=>16*Math.pow(1.22,Math.min(r,20))
@@ -929,7 +951,7 @@ class Unit{
     const R2=this.rng()*this.rng();
     const inR=S.mobs.filter(m=>m.alive&&m.d>0&&dist2(this.x,this.y,m.x,m.y)<=R2);
     if(!inR.length) return;
-    inR.sort((a,b)=>b.d-a.d); // 가장 오래 돈 몹 우선
+    inR.sort((TMODES[S.tmode]||TMODES[0]).cmp); // 타겟 우선순위 (선두/약체/강체/보스)
     this.cd=1/this.aspd();
     this.flash=.14;
     this.face=inR[0].x>=this.x?1:-1;
@@ -1158,18 +1180,59 @@ function rollGrade(){
   let luck=0.03*metaLv('luck')+((S.relicFlags&&S.relicFlags.eliteSummon)?0.14:0);
   const p=GRADES.map(g=>g.prob);
   if(luck>0){ const mv=Math.min(p[0],luck); p[0]-=mv; p[1]+=mv*0.35; p[2]+=mv*0.45; p[3]+=mv*0.15; p[4]+=mv*0.05; } // 명성·정예징집이 영웅(3)·전설(4) 확률도 실제 상승 (이전엔 고급·희귀만 올라 투자 체감 0)
-  const x=Math.random(); let acc=0;
-  for(let i=0;i<p.length;i++){ acc+=p[i]; if(x<acc) return i; }
-  return 0;
+  const x=Math.random(); let acc=0, g=0;
+  for(let i=0;i<p.length;i++){ acc+=p[i]; if(x<acc){ g=i; break; } }
+  // 피티 천장: 연속 꽝이 쌓이면 상위 등급 확정 (가챠 실망 상한)
+  const P=S.pity; P.r++; P.h++; P.l++;
+  if(P.l>=200) g=Math.max(g,4);
+  else if(P.h>=40) g=Math.max(g,3);
+  else if(P.r>=15) g=Math.max(g,2);
+  if(g>=2)P.r=0; if(g>=3)P.h=0; if(g>=4)P.l=0;
+  return g;
 }
-function spawnUnit(grade,pos){
-  const ch=pick(CHARS_BY_GRADE[grade]);
+function pityHint(){ const P=S.pity; return `전설까지 ${200-P.l} · 영웅까지 ${40-P.h}`; }
+function spawnUnit(grade,pos,forceCls){
+  let pool=CHARS_BY_GRADE[grade];
+  if(forceCls){ const f=pool.filter(c=>c.cls===forceCls); if(f.length)pool=f; } // 직업 소집: 해당 등급의 지정 직업 (없으면 랜덤 폴백)
+  const ch=pick(pool);
   const u=new Unit(ch.id,1,pos.x,pos.y);
   S.units.push(u);
-  puff(u.x,u.y,grade>=3?22:8,GRADES[grade].color);
-  S.fx.push({t:'ring',x:u.x,y:u.y,r0:6,r1:44,life:.3,max:.3,color:GRADES[grade].color});
-  if(grade>=3) log(`🎉 <b style="color:${GRADES[grade].color}">${GRADES[grade].name} ${ch.name}</b> 영입!!`);
+  const col=GRADES[grade].color;
+  puff(u.x,u.y,grade>=3?22:8,col);
+  S.fx.push({t:'ring',x:u.x,y:u.y,r0:6,r1:44,life:.3,max:.3,color:col});
+  if(grade>=3){ // 대박 연출: 영웅+ 화면 플래시·셰이크, 전설은 슬로우·대형 배너
+    log(`🎉 <b style="color:${col}">${GRADES[grade].name} ${ch.name}</b> 영입!!`);
+    addShake(grade>=4?7:4); S.hitStop=Math.max(S.hitStop,grade>=4?.18:.06);
+    S.fx.push({t:'ring',x:u.x,y:u.y,r0:10,r1:grade>=4?150:90,life:.55,max:.55,color:col});
+    S.fx.push({t:'flash',x:u.x,y:u.y,r:grade>=4?120:70,life:.22,max:.22,color:col});
+    if(grade>=4){ S.fx.push({t:'banner',name:`✨ 전설 ✨`,sub:ch.name,life:1.6,max:1.6}); puff(u.x,u.y,30,'#ffe066'); AudioSys.win&&AudioSys.win(); }
+  }
   return u;
+}
+function draftSummon(cls){
+  if(S.phase!=='play') return;
+  const sCost=Math.round(ECON.summon*1.5*MODS.summon);
+  if(S.gold<sCost){ toast('골드가 부족합니다! (직업 소집 '+sCost+'G)'); AudioSys.error(); return; }
+  if(S.units.length>=unitCap()){ toast('용병단이 가득 찼습니다!'); AudioSys.error(); return; }
+  S.gold-=sCost; S.summons++;
+  const u=spawnUnit(rollGrade(),findSpawnSpot(),cls);
+  AudioSys.summon(u.grade); select(u);
+}
+function mergeAll(){
+  if(S.phase!=='play') return;
+  const groups={}; S.units.forEach(u=>{ if(u.star<3){ const k=u.charId+'_'+u.star; (groups[k]=groups[k]||[]).push(u); } });
+  let n=0;
+  // 낮은 별부터 올려 연쇄 합류 (★1 셋 → ★2, 그 ★2들이 다시 셋이면 ★3)
+  for(let pass=0;pass<3;pass++){ let did=false;
+    const gs={}; S.units.forEach(u=>{ if(u.star<3){ const k=u.charId+'_'+u.star; (gs[k]=gs[k]||[]).push(u); } });
+    for(const k in gs){ const arr=gs[k];
+      while(arr.length>=3){ const keep=arr.shift(), eat=arr.splice(0,2);
+        eat.forEach(x=>{ S.units.splice(S.units.indexOf(x),1); S.fx.push({t:'zip',x1:x.x,y1:x.y,x2:keep.x,y2:keep.y,life:.25,max:.25,color:'#7cc8ff'}); });
+        keep.star++; puff(keep.x,keep.y,16,'#ffd54f'); n++; did=true; } }
+    if(!did)break;
+  }
+  if(n){ AudioSys.merge(); log(`🔗 <b>전체 합류</b> — ${n}회 계급 상승!`); select(null); refreshCard&&refreshCard(); }
+  else toast('합류 가능한 조합이 없습니다 (같은 용병·계급 3명 필요)');
 }
 function summon(forceGrade){
   if(S.phase!=='play') return;
@@ -2205,7 +2268,7 @@ function updateUI(){
   renderSyn();
   UI.unitCount.textContent=`${S.units.length} / ${unitCap()}`;
   const empt=unitCap()-S.units.length;
-  UI.summonCost.textContent=`${Math.round(ECON.summon*MODS.summon)} G · 자리 ${empt}`;
+  UI.summonCost.textContent=`${Math.round(ECON.summon*MODS.summon)} G · 자리 ${empt}`+(S.phase==='play'?` · ${pityHint()}`:'');
   UI.summon.disabled=S.gold<Math.round(ECON.summon*MODS.summon)||!empt||S.phase!=='play';
   const upCost=Math.floor(ECON.upgBase*Math.pow(ECON.upgGrow,S.upgLv));
   UI.upgTxt.textContent=S.upgLv>=ECON.upgMax?`Lv.${S.upgLv} MAX`:`Lv.${S.upgLv} · ${upCost} G`;
@@ -2350,6 +2413,8 @@ function resetState(){
   S.units.length=0; S.mobs.length=0; S.prj.length=0; S.fx.length=0; S.texts.length=0;
   S.roundT=0; S.spawnQ=[]; S.boss=null; S.finalT=0; S.kills=0; S.summons=0; S.time=0;
   S.speed=1; S.paused=false; S.sel=null; S.selGroup=[]; S.roundSpawned=0;
+  S.pity={r:0,h:0,l:0}; // 피티는 판 단위 (이월 없음)
+  renderTargetBar&&renderTargetBar();
   ['sp1','sp2','sp3'].forEach((k,i)=>$(k).classList.toggle('speedOn',i===0));
   $('pauseBtn').textContent='⏸';
   const chip=$('diffChip');
@@ -2358,6 +2423,18 @@ function resetState(){
   if(metaLv('hero')){ const hp=findSpawnSpot(); S.units.push(new Unit(pick(CHARS_BY_GRADE[1]).id,1,hp.x,hp.y)); }
   UI.log.innerHTML=''; refreshCard();
 }
+/* 타겟 우선순위 바 */
+function renderTargetBar(){ const el=$('targetBar'); if(!el) return;
+  el.innerHTML=TMODES.map((t,i)=>`<button data-tm="${i}" style="flex:1;padding:5px 2px;font-size:11px;${S.tmode===i?'box-shadow:inset 0 0 0 1px #e8c86a;background:linear-gradient(180deg,#4a4020,#2a2410)':''}">${t.icon}<br><span style="font-size:9px">${t.k}</span></button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.tmode=+b.dataset.tm; AudioSys.ui&&AudioSys.ui(); renderTargetBar(); });
+}
+/* 직업 지정 소집 바 */
+function renderDraftRow(){ const el=$('draftRow'); if(!el) return;
+  el.innerHTML=Object.keys(SYN_DEF).map(cls=>`<button data-cls="${cls}" title="${cls} 지정 소집 (30G)" style="flex:1;padding:6px 2px;font-size:15px">${SYN_DEF[cls].icon}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>draftSummon(b.dataset.cls));
+}
+renderTargetBar(); renderDraftRow();
+$('mergeAllBtn').onclick=()=>{ AudioSys.ui&&AudioSys.ui(); mergeAll(); };
 $('startBtn').onclick=()=>{
   AudioSys.init();
   $('startScreen').style.display='none';
