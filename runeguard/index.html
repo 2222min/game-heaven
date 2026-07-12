@@ -237,6 +237,13 @@
         <button id="relicReroll" style="padding:8px 18px;font-size:13px">🎲 다시 뽑기 <span id="rerollN"></span></button>
       </div>
     </div>
+    <div class="screen" id="notesScreen" style="display:none">
+      <div class="card fadein">
+        <h1 style="color:#e8c86a">📜 패치노트</h1>
+        <div id="notesBody" style="text-align:left;max-height:56vh;overflow-y:auto;margin:12px 0"></div>
+        <button class="bigbtn" id="notesBack">돌아가기</button>
+      </div>
+    </div>
     <div class="screen" id="startScreen">
       <div class="card fadein">
         <h1>🛡️ 룬가드 — 랜덤 용병 디펜스</h1>
@@ -248,7 +255,7 @@
           ⚔️ <b>스킬</b> — 마법사 번개연쇄·창병 관통·성기사 크리티컬·암살자 즉사 등 다채로운 스킬<br>
           🖐 <b>지휘</b> — 클릭 선택(박스·Shift 다중) 후 지면 클릭 = 이동! <b>4방향 관문</b>으로 몬스터 길목에 주둔 가능<br>
           💎 <b>보스 토벌</b> — 마나 획득 → 영웅/전설 확정 소집<br>
-          ☠️ 성 주위에 몬스터가 <b>80마리</b> 쌓이면 패배! 60웨이브 「마왕」을 잡으면 승리!
+          ☠️ 성 주위에 몬스터가 <b>한계치(난이도별 54~84마리)</b>만큼 쌓이면 패배! 60웨이브 「마왕」을 잡으면 승리!
         </div>
         <div id="diffPick"></div>
         <div style="font-size:11px;color:#a89878;font-weight:800;letter-spacing:1px;margin:2px 0 4px">🗺️ 원정 지역</div>
@@ -262,7 +269,9 @@
         <button class="bigbtn" id="startBtn">출격하기 ⚔️</button>
         <div id="runeBadge">🔷 보유 룬 <b id="startRunes">0</b></div>
         <div><button class="altbtn" id="metaBtn">🔨 룬 제단 (영구 강화)</button></div>
+        <div style="margin-top:6px"><button class="altbtn" id="notesBtn" style="position:relative">📜 패치노트</button></div>
         <div style="margin-top:14px;font-size:12px;color:#6d5f42" id="bestLine"></div>
+        <div style="margin-top:8px;font-size:10.5px;color:#5d5138">v<span id="verLabel"></span></div>
       </div>
     </div>
     <div class="screen" id="endScreen" style="display:none">
@@ -270,6 +279,7 @@
         <h1 id="endTitle">👑 승리!</h1>
         <h2 id="endSub"></h2>
         <div id="endStats"></div>
+        <button class="bigbtn" id="endNextGoal" style="display:none;margin-top:12px;background:linear-gradient(180deg,#5a4a7d,#3e2e5a);border-color:#a88fe0"></button>
         <button class="bigbtn" id="retryBtn">다시 출격 ⚔️</button>
         <div style="margin-top:10px"><button id="menuBtn" style="padding:8px 18px;font-size:13px">🧭 난이도 변경</button></div>
       </div>
@@ -284,7 +294,7 @@
         <div id="nextBarWrap"><div id="nextBar"></div></div>
         <div id="nextTxt" style="font-size:11px;color:var(--dim);font-weight:700;width:34px;text-align:right">25s</div>
       </div>
-      <div id="mobGaugeWrap"><div id="mobGauge"></div><div id="mobGaugeTxt">몬스터 0 / 80</div></div>
+      <div id="mobGaugeWrap"><div id="mobGauge"></div><div id="mobGaugeTxt">몬스터 0 / —</div></div>
       <div id="waveType" style="font-size:11px;color:#d8c4a0;font-weight:800;letter-spacing:.5px;text-align:center;margin-top:5px;min-height:14px"></div>
       <div class="resline">
         <div class="res"><small>골드</small><span id="goldV">100</span></div>
@@ -368,7 +378,16 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const dist2=(x1,y1,x2,y2)=>{const dx=x1-x2,dy=y1-y2;return dx*dx+dy*dy};
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(0)+'K':n>=1000?(n/1000).toFixed(1)+'K':Math.floor(n)+'';
 const TAU=Math.PI*2;
-
+const RG_VER='1.0.0'; // CHANGELOG.md의 runeguard 최신 버전과 일치 (.githooks/pre-commit이 검사)
+const RG_NOTES=[
+ {v:'1.0.0',date:'7/12',title:'고도화 시작 — 기반 정비',items:[
+   '🏅 최고 기록이 처음으로 표시됩니다 — 시작 화면 난이도별 카드 + 신기록 강조',
+   '🎯 종료 화면에 "다음 목표" 버튼 (재도전·상위 난이도·어센션 유도)',
+   '🎲 명성·정예징집이 이제 실제로 영웅·전설 확률을 올립니다 (기존 버그 수정)',
+   '💰 소환→판매 무한 골드 버그 차단 — 소환의 긴장 복원',
+   '⚔ 보스 난이도 곡선 정상화 — 55웨이브가 마왕보다 어렵던 문제 해소',
+   '🔊 공격속도 강화 사운드 오류 수정 · 튜토리얼 문구 정정']},
+];
 /* ---------------- audio (WebAudio 신스) ---------------- */
 const AudioSys=(()=>{
   let ctx=null, master=null, on=true, bgmTimer=null, bgmGain=null;
@@ -428,6 +447,7 @@ const AudioSys=(()=>{
     merge(){ tone(440,.09,'square',.15); tone(554,.09,'square',.15,0,.08); tone(659,.16,'square',.16,0,.16); },
     gradeup(){ [440,554,659,880].forEach((f,i)=>tone(f,.13,'square',.16,0,i*.09)); },
     gas(){ tone(1568,.12,'sine',.13); tone(2093,.18,'sine',.09,0,.08); },
+    gem(){ tone(1046,.08,'triangle',.12); tone(1568,.14,'triangle',.09,0,.05); }, // 공속강화음 (이전엔 미정의로 TypeError)
     boss(){ tone(55,.8,'sawtooth',.32,-18); noise(.6,.12,0,120); },
     wallhit(){ tone(120,.14,'square',.14,-40); noise(.1,.08,0,400); },     // 성벽 강타
     wallbreak(){ tone(90,.5,'sawtooth',.3,-40); noise(.4,.18,0,250); },    // 성벽 붕괴
@@ -497,7 +517,7 @@ const GRADES=[
 ];
 const GRADEUP_COST=[60,180,450,1200];
 const STAR_MULT=[1,3.2,10.5];
-const SELL_BASE=[10,25,70,190,500];
+const SELL_BASE=[6,14,40,110,300]; // 판매 EV(15.8)<소환가(20) — 소환→판매 무한 골드펌프 차단(롤 긴장 복원)
 
 /* atk type 재사용: shoot/slash/pierce/cannon/lightning/quake/exec */
 /* cls: 전사 궁수 마법사 성기사 도적 (시너지 직업) */
@@ -581,8 +601,8 @@ const BOSSES=[
  {round:40,name:'강철 해골기사',tile:121,tint:'#7088b0',tintA:.4, hpMul:24,gas:5,size:70,speed:40,mech:'enrage'},
  {round:45,name:'흑거미',      tile:122,tint:'#201828',tintA:.55,hpMul:30,gas:5,size:68,speed:56},
  {round:50,name:'화염 게 마수',tile:110,tint:'#ff4020',tintA:.45,hpMul:34,gas:6,size:72,speed:44,mech:'enrage'},
- {round:55,name:'죽음의 기사', tile:121,tint:'#8040c0',tintA:.5, hpMul:38,gas:6,size:72,speed:42,mech:'enrage'},
- {round:60,name:'마왕',        tile:20, tint:'#c02020',tintA:.4, hpMul:30,gas:12,size:84,speed:34,final:true,mech:'enrage'},
+ {round:55,name:'죽음의 기사', tile:121,tint:'#8040c0',tintA:.5, hpMul:28,gas:6,size:72,speed:42,mech:'enrage'},
+ {round:60,name:'마왕',        tile:20, tint:'#c02020',tintA:.4, hpMul:42,gas:12,size:84,speed:34,final:true,mech:'enrage'},
 ];
 /* 일반 몬스터 4티어 */
 const MOB_TIERS=[
@@ -1137,7 +1157,7 @@ function consumeVictims(mode){
 function rollGrade(){
   let luck=0.03*metaLv('luck')+((S.relicFlags&&S.relicFlags.eliteSummon)?0.14:0);
   const p=GRADES.map(g=>g.prob);
-  if(luck>0){ const mv=Math.min(p[0],luck); p[0]-=mv; p[2]+=mv*0.55; p[1]+=mv*0.45; }
+  if(luck>0){ const mv=Math.min(p[0],luck); p[0]-=mv; p[1]+=mv*0.35; p[2]+=mv*0.45; p[3]+=mv*0.15; p[4]+=mv*0.05; } // 명성·정예징집이 영웅(3)·전설(4) 확률도 실제 상승 (이전엔 고급·희귀만 올라 투자 체감 0)
   const x=Math.random(); let acc=0;
   for(let i=0;i<p.length;i++){ acc+=p[i]; if(x<acc) return i; }
   return 0;
@@ -1278,7 +1298,7 @@ function startRound(r){
     S.spawnQ.push({at:.8,boss:b}); // 보스 라운드는 잡몹 없이 보스만
     log(`☠️ <b style="color:#ff7043">WAVE ${r} — 「${b.name}」 출현!</b>`);
     { const wt=document.getElementById('waveType'); if(wt) wt.textContent='☠ 보스 웨이브'; }
-    const tlimit = b.final ? S.diff.finalT : Math.round(S.diff.finalT*0.40); // 일반 보스 ~45~57초
+    const tlimit = b.final ? S.diff.finalT : Math.round(S.diff.finalT*0.46); // 비최종 보스 제한시간 40%→46% (요구딜 역전 완화)
     S.finalT=tlimit; S.roundDur=tlimit+3;
     S.fx.push({t:'banner',name:b.name,sub:`제한 ${tlimit}초 — 시간 내 토벌하지 못하면 패배!`,life:2,max:2});
     AudioSys.boss();
@@ -1330,20 +1350,34 @@ function stepRound(dt){
 /* =========================================================================
    승패
    ========================================================================= */
+const BEST_KEY='runeguard_best';
+function loadBest(){ try{ const o=JSON.parse(localStorage.getItem(BEST_KEY)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveBest(){
-  const all=JSON.parse(localStorage.getItem('runeguard_best')||'{}');
-  const cur=all[S.diff.key]||{round:0,win:false};
-  all[S.diff.key]={round:Math.max(cur.round,S.round), win:cur.win||S.phase==='win'};
-  localStorage.setItem('runeguard_best',JSON.stringify(all));
+  const all=loadBest();
+  const cur=all[S.diff.key]||{round:0,win:false,time:0,asc:0};
+  const won=cur.win||S.phase==='win';
+  const nowWin=S.phase==='win';
+  S.recPrevRound=cur.round||0; S.recNew=S.round>(cur.round||0); // 종료화면 신기록 판정용 (병합 전 스냅샷)
+  all[S.diff.key]={
+    round:Math.max(cur.round||0,S.round), win:won,
+    time: nowWin ? (cur.time>0 ? Math.min(cur.time,Math.round(S.time)) : Math.round(S.time)) : (cur.time||0),
+    asc: Math.max(cur.asc||0, nowWin?(S.asc||0):0),
+  };
+  try{ localStorage.setItem(BEST_KEY,JSON.stringify(all)); }catch(e){}
   renderBestLine();
 }
 function renderBestLine(){
-  const all=JSON.parse(localStorage.getItem('opdef_best2')||'{}');
-  const parts=DIFFS.filter(d=>all[d.key]).map(d=>{
-    const b=all[d.key];
-    return `<span style="color:${d.color};font-weight:800">${d.name}</span> ${b.win?'🏆':'W'+b.round}`;
-  });
-  $('bestLine').innerHTML=parts.length?'최고 기록 — '+parts.join(' &nbsp;·&nbsp; '):'';
+  const el=$('bestLine'); if(!el) return;
+  const all=loadBest();
+  const cards=DIFFS.map(d=>{ const b=all[d.key];
+    const body=b ? (b.win?`🏆 클리어${b.asc?` <span style="color:#ff8a6a">A${b.asc}</span>`:''}${b.time?` · ${b.time}s`:''}`:`WAVE <b>${b.round}</b>`)
+                 : '<span style="color:#5d5138">미기록</span>';
+    return `<div style="flex:1;min-width:74px;background:#120e08;border:1px solid #3a3320;border-radius:9px;padding:5px 7px;text-align:center">
+      <div style="color:${d.color};font-weight:800;font-size:10.5px">${d.name}</div>
+      <div style="font-size:11.5px;font-weight:800;margin-top:2px">${body}</div></div>`;
+  }).join('');
+  el.innerHTML=`<div style="font-size:10.5px;color:#6d5f42;font-weight:800;letter-spacing:1px;margin-bottom:5px">🏅 나의 최고 기록</div>`+
+    `<div style="display:flex;gap:6px;flex-wrap:wrap">${cards}</div>`;
 }
 function winGame(){
   if(S.phase!=='play') return;
@@ -2343,6 +2377,12 @@ $('menuBtn').onclick=()=>{ refreshStartRunes(); refreshAsc();
   $('startScreen').style.display='flex';
   S.phase='start';
 };
+$('endNextGoal').onclick=(e)=>{ const act=e.currentTarget.dataset.act;
+  if(act==='retry'){ const di=DIFFS.indexOf(S.diff); if(S.round>=40&&di<DIFFS.length-1)S.diff=DIFFS[di+1]; }
+  else if(act==='ascend'){ S.asc=Math.min(META.ascMax||0, +e.currentTarget.dataset.asc||((S.asc||0)+1)); }
+  $('endNextGoal').style.display='none';
+  $('endScreen').style.display='none'; S.phase='play'; resetState(); startRound(1);
+};
 /* 난이도 선택 */
 DIFFS.forEach((d,i)=>{
   const b=document.createElement('button');
@@ -2376,14 +2416,22 @@ function showEnd(win,reason){
   t.classList.toggle('lose',!win);
   $('endSub').textContent=win?'마왕 토벌 — 왕국을 지켜냈다!':(reason||'');
   const mm=Math.floor(S.time/60), ss=Math.floor(S.time%60);
-  const all=JSON.parse(localStorage.getItem('opdef_best2')||'{}');
-  const best=all[S.diff.key]||{round:0,win:false};
+  const best=loadBest()[S.diff.key]||{round:0,win:false};
+  const recLine = S.recNew
+    ? `<span style="color:#ffcf5a;font-weight:800">✨ 신기록! W${S.recPrevRound} → W${S.round}</span>`
+    : `<span style="color:#8fa3c0;font-size:13px">이 난이도 최고: ${best.win?'🏆 클리어'+(best.asc?' A'+best.asc:''):'WAVE '+best.round}</span>`;
   $('endStats').innerHTML=
     `<span style="color:#c8b6ff;font-weight:800">🔷 룬 +${S.lastRunes||0}</span> 획득 (총 보유 ${META.runes})<br>`+
     `<span style="color:${S.diff.color};font-weight:800">${S.diff.name}</span> 난이도 · 도달 웨이브 <b>${S.round}</b> / 60<br>`+
     `토벌 <b>${S.kills}</b> · 소집 <b>${S.summons}</b>회 · 강화 <b>Lv.${S.upgLv}</b><br>`+
-    `플레이 타임 <b>${mm}:${String(ss).padStart(2,'0')}</b><br>`+
-    `<span style="color:#8fa3c0;font-size:13px">이 난이도 최고 기록: ${best.win?'🏆 클리어':'WAVE '+best.round}</span>`;
+    `플레이 타임 <b>${mm}:${String(ss).padStart(2,'0')}</b><br>`+recLine;
+  // 넥스트골 CTA — 미클리어면 재도전, 클리어면 다음 어센션 유도
+  const cta=$('endNextGoal');
+  if(cta){ const di=DIFFS.indexOf(S.diff);
+    if(!win){ cta.textContent = S.round>=40&&di<DIFFS.length-1 ? `▶ 한 단계 위 「${DIFFS[di+1].name}」 도전` : '▶ 다시 도전 — 이번엔 더 멀리';
+      cta.dataset.act='retry'; }
+    else { const na=(S.asc||0)+1; cta.textContent=`☠️ 어센션 A${na} 도전 — 룬 보상 ×${(1+0.25*na).toFixed(2)}`; cta.dataset.act='ascend'; cta.dataset.asc=na; }
+    cta.style.display='block'; }
   $('endScreen').style.display='flex';
 }
 
@@ -2813,6 +2861,18 @@ function renderMeta(){
 $('metaBtn').onclick=()=>{ AudioSys.ui&&AudioSys.ui(); openMeta(); };
 $('metaBack').onclick=()=>{ $('metaScreen').style.display='none'; $('startScreen').style.display='flex'; refreshStartRunes(); };
 function refreshStartRunes(){ const e=$('startRunes'); if(e) e.textContent=META.runes||0; }
+/* 패치노트 */
+function renderNotes(){ const el=$('notesBody'); if(!el) return;
+  el.innerHTML=RG_NOTES.map((n,i)=>`<div style="padding:10px 13px;border-radius:11px;margin-bottom:9px;background:${i===0?'linear-gradient(90deg,#2c2519,#1a150d)':'#160f08'};border:1px solid ${i===0?'#e8c86a44':'#3a332044'}">
+    <div style="display:flex;align-items:baseline;gap:8px"><b style="font-size:14px;color:${i===0?'#e8c86a':'#efe6d2'}">v${n.v}</b>
+      <span style="font-size:11px;color:#a89878">${n.date}</span><span style="font-size:12.5px;font-weight:800">${n.title}</span>${i===0?'<span style="font-size:10px;background:#3a3320;color:#e8c86a;padding:1px 6px;border-radius:6px;font-weight:800">NEW</span>':''}</div>
+    <ul style="margin:6px 0 0;padding-left:18px;font-size:12px;color:#a89878;line-height:1.7">${n.items.map(it=>`<li>${it}</li>`).join('')}</ul></div>`).join('');
+}
+$('notesBtn').onclick=()=>{ AudioSys.ui&&AudioSys.ui(); renderNotes(); try{META.seenNotes=RG_VER;saveMeta();}catch(e){} const b=$('notesBtn'); if(b)b.innerHTML='📜 패치노트';
+  $('startScreen').style.display='none'; $('notesScreen').style.display='flex'; };
+$('notesBack').onclick=()=>{ $('notesScreen').style.display='none'; $('startScreen').style.display='flex'; };
+{ const vl=$('verLabel'); if(vl) vl.textContent=RG_VER;
+  if((META.seenNotes||'')!==RG_VER){ const b=$('notesBtn'); if(b){ b.innerHTML='📜 패치노트 <span style="position:absolute;top:5px;right:8px;width:7px;height:7px;border-radius:50%;background:#e8c86a;box-shadow:0 0 6px #e8c86a"></span>'; } } }
 recalcMods(); refreshStartRunes(); refreshAsc();
 
 /* 부트 — 아틀라스 픽셀 디코딩 완료 후 스프라이트 빌드 (data URI는 complete=true여도 래스터화 미완 가능) */

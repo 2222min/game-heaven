@@ -1,7 +1,22 @@
 #!/bin/sh
-# 던전 서바이버즈 릴리스 규칙 강제 (활성화: git config core.hooksPath .githooks)
+# 게임별 릴리스 규칙 강제 (활성화: git config core.hooksPath .githooks)
 staged=$(git diff --cached --name-only)
 
+# ===== 룬가드 (PWA 없음 → sw 캐시 범프 불요) =====
+if echo "$staged" | grep -q '^runeguard/'; then
+  if ! echo "$staged" | grep -q '^CHANGELOG-runeguard\.md$'; then
+    echo "✖ 커밋 거부: runeguard/ 변경에는 CHANGELOG-runeguard.md 패치노트 갱신이 필요합니다." >&2
+    exit 1
+  fi
+  rg_html=$(git show :runeguard/index.html | grep -o "RG_VER='[0-9.]*'" | head -1 | grep -o '[0-9][0-9.]*')
+  rg_cl=$(git show :CHANGELOG-runeguard.md | grep -o '^## v[0-9][0-9.]*' | head -1 | grep -o '[0-9][0-9.]*')
+  if [ -n "$rg_html" ] && [ "$rg_html" != "$rg_cl" ]; then
+    echo "✖ 커밋 거부: runeguard RG_VER(v$rg_html) ≠ CHANGELOG-runeguard.md 최신(v$rg_cl) — RG_NOTES와 CHANGELOG를 함께 올리세요." >&2
+    exit 1
+  fi
+fi
+
+# ===== 던전 서바이버즈 =====
 if echo "$staged" | grep -q '^dungeon-survivors/'; then
   # 1) 패치노트(CHANGELOG.md) 동반 필수
   if ! echo "$staged" | grep -q '^CHANGELOG\.md$'; then
